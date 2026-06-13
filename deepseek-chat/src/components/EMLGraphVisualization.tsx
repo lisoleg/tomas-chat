@@ -506,7 +506,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       setRenderError(String(err))
     }
 
-    return () => simulationRef.current?.stop()
+    return () => { simulationRef.current?.stop() }
   }, [filteredData, containerSize, selectedNodeId, edgeWeightThreshold])
 
   // ── 高亮选中关系 ──

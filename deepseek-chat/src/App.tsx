@@ -8,9 +8,11 @@ import { DistillPanel } from './components/DistillPanel'
 import { TechDocs } from './components/TechDocs'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
+import { useToast } from './components/Toast'
 import type { AppMode, ChatEMLState, EMLGraphData } from './types'
 
 export default function App() {
+  const { error: toastError } = useToast()
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mode, setMode] = useState<AppMode>('chat')
@@ -46,7 +48,7 @@ export default function App() {
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : '加载失败'
-      alert(`加载 EML 失败：${message}`)
+      toastError('加载 EML 失败', message)
     }
   }, [])
 
@@ -168,6 +170,7 @@ export default function App() {
         onCloseMobile={() => setSidebarOpen(false)}
         mode={mode}
         onSwitchMode={setMode}
+        loading={chat.loading}
       />
 
       <main className="flex-1 flex flex-col min-w-0 min-h-0">

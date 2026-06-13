@@ -97,7 +97,10 @@ def batch_import_csv(input_file, batch_size=1000, limit=None, skip_existing=True
         existing_count = count_existing_triples(conn)
         if existing_count > 0:
             print(f"⚠️ 检测到已导入 {existing_count} 条三元组")
-            response = input("是否清空后重新导入？(y/N): ")
+            try:
+                response = input("是否清空后重新导入？(y/N): ")
+            except EOFError:
+                response = 'n'
             if response.lower() != 'y':
                 print("❌ 取消导入")
                 conn.close()

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { AppMode, ChatSession } from '../types'
 import { IconChat, IconKey, IconPlus, IconSparkles, IconTrash, IconEdit } from './icons'
+import { SkeletonText } from './Skeleton'
 
 interface SidebarProps {
   /** 全部会话列表 */
@@ -28,6 +29,8 @@ interface SidebarProps {
   mode: AppMode
   /** 切换应用模式 */
   onSwitchMode: (mode: AppMode) => void
+  /** 是否正在加载会话 */
+  loading?: boolean
 }
 
 /** 格式化时间戳为相对友好的字符串 */
@@ -57,7 +60,8 @@ export function Sidebar(props: SidebarProps) {
     open,
     onCloseMobile,
     mode,
-    onSwitchMode
+    onSwitchMode,
+    loading = false
   } = props
 
   // 控制删除按钮的 hover 状态（仅在该项 hover 时显示）
@@ -168,7 +172,11 @@ export function Sidebar(props: SidebarProps) {
 
         {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
-          {sorted.length === 0 ? (
+          {loading ? (
+            <div className="px-3 py-3 space-y-2">
+              <SkeletonText lines={5} />
+            </div>
+          ) : sorted.length === 0 ? (
             <div className="px-3 py-6 text-center text-textSecondary text-sm">
               暂无对话，点击上方按钮开始
             </div>

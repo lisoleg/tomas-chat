@@ -57,6 +57,8 @@ export interface UseChatReturn {
   currentSession: ChatSession | null
   /** 当前会话 ID */
   currentSessionId: string | null
+  /** 是否正在加载会话 */
+  loading: boolean
   /** 是否正在流式接收 */
   isLoading: boolean
   /** API Key */
@@ -92,17 +94,22 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [apiKey, setApiKeyState] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(true)
 
   // 加载会话和 API Key
   useEffect(() => {
     async function loadInitialData() {
-      const loadedSessions = await loadSessions()
-      setSessions(loadedSessions)
-      if (loadedSessions.length > 0) {
-        setCurrentSessionId(loadedSessions[0].id)
+      try {
+        const loadedSessions = await loadSessions()
+        setSessions(loadedSessions)
+        if (loadedSessions.length > 0) {
+          setCurrentSessionId(loadedSessions[0].id)
+        }
+        const loadedApiKey = await loadApiKey()
+        setApiKeyState(loadedApiKey)
+      } finally {
+        setLoading(false)
       }
-      const loadedApiKey = await loadApiKey()
-      setApiKeyState(loadedApiKey)
     }
     loadInitialData()
   }, [])  // 空依赖数组，只在挂载时执行一次
@@ -663,6 +670,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     sessions,
     currentSession,
     currentSessionId,
+    loading,
     isLoading,
     apiKey,
     setApiKey,

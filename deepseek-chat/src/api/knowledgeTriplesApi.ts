@@ -5,7 +5,7 @@
  * 调用后端 /api/knowledge/triples 相关端点
  */
 
-import { apiGet, apiPost, apiDelete } from './apiClient'
+import { apiGet } from './apiClient'
 
 export interface Triple {
   id: number
