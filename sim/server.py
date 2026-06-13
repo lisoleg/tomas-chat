@@ -336,6 +336,48 @@ def delete_knowledge(item_id):
     
     return jsonify({'success': True})
 
+# ==================== 设置 API ====================
+
+@app.route('/api/settings/<key>', methods=['GET'])
+def get_setting(key):
+    """获取设置项"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    
+    conn.close()
+    
+    if row:
+        return jsonify({'success': True, 'data': row['value']})
+    else:
+        return jsonify({'success': False, 'message': '设置项不存在'}), 404
+
+@app.route('/api/settings', methods=['POST'])
+def save_setting():
+    """保存设置项"""
+    data = request.json
+    key = data.get('key')
+    value = data.get('value')
+    
+    if not key:
+        return jsonify({'success': False, 'message': 'key 不能为空'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    ''', (key, value))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
 # ==================== 知识三元组 API ====================
 
 @app.route('/api/knowledge/triples')
