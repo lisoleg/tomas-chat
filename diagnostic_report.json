@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "timestamp": "2026-06-13T04:54:01.047543",
+  "modules": {
+    "octonion": {
+      "status": "FAIL",
+      "error": "can only concatenate list (not \"dict\") to list"
+    },
+    "spectral_laplacian": {
+      "status": "PASS",
+      "detail": {
+        "p1": true,
+        "p2": true,
+        "p3": true,
+        "p4": true
+      }
+    },
+    "nasga_core": {
+      "status": "FAIL",
+      "detail": {
+        "error": "too many values to unpack (expected 2)"
+      }
+    },
+    "a6_bs": {
+      "status": "FAIL",
+      "detail": {
+        "report": "{'all_pass': True, 'passed_levels': 5, 'total_levels': 5, 'results': {'pendulum': {'level': 'pendulum', 'passed': True, 'results': {'fano_table': True, 'norm_product': np.True_, 'associator_nonzero': True, 'xi_c_mean': 1.082506596689367, 'xi_c_max': 1.9116695451700279, 'moufang_rate': 1.0}, 'details': {'fano_errors': [], 'norm_error': np.float64(4.440892098500626e-16)}}, 'peano': {'level': 'peano', 'passed': True, 'results': {'graph_build': True, 'laplacian_shape': True, 'nx_verify': np.True_, '",
+        "passed": 0,
+        "failed": 99
+      }
+    },
+    "xi_c_measure": {
+      "status": "PASS",
+      "detail": {
+        "p1": true,
+        "p2": true,
+        "p3": true,
+        "p4": true
+      }
+    }
+  },
+  "overall": "FAIL"
+}

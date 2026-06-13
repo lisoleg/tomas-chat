@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Secrets & env
+.env
+*.env
+*.key
+distilled_knowledge.eml
+*.eml
+!test_eml_graph.eml
+
+# C/CUDA
+*.o
+*.obj
+*.ko
+*.mod.c
+*.mod
+*.order
+Module.symvers
+Mkfile.old
+
+# FPGA/Vivado
+*.jou
+*.log
+*.str
+*.xpr
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.gen/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.bak

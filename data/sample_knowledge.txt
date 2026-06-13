@@ -1,0 +1,9 @@
+人工智能（Artificial Intelligence）是计算机科学的一个重要分支，旨在创建能够模拟人类智能行为的系统。机器学习（Machine Learning）是人工智能的核心子领域，它使计算机能够从数据中学习而不需要显式编程。深度学习（Deep Learning）是机器学习的一个分支，使用多层神经网络（Neural Networks）来学习数据的层次化表示。
+
+自然语言处理（NLP）是人工智能的一个重要应用领域，涉及计算机理解和生成人类语言。GPT（Generative Pre-trained Transformer）是一种基于Transformer架构的大语言模型，能够生成连贯的文本。BERT（Bidirectional Encoder Representations from Transformers）则专注于理解文本语义，在多项NLP任务中取得了突破性成果。
+
+强化学习（Reinforcement Learning）是机器学习的另一分支，智能体通过与环境交互获得奖励信号来学习最优策略。AlphaGo利用深度强化学习击败了人类围棋冠军。自动驾驶、机器人控制等领域广泛使用强化学习技术。
+
+计算机视觉（Computer Vision）使计算机能够理解和分析图像与视频。卷积神经网络（CNN）是计算机视觉的基础架构，能够自动提取图像的层次化特征。目标检测（Object Detection）、图像分割（Image Segmentation）是计算机视觉的关键任务。
+
+知识图谱（Knowledge Graph）是一种结构化的知识表示方法，将实体和关系组织成图结构。它广泛应用于搜索引擎、推荐系统和问答系统中。

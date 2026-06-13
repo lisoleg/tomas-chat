@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOMAS-AGI v2.0 — 基于非结合谱图代数的具身通用人工智能系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ============================================================
+   TOMAS-AGI v2.0 — 暗色科技主题样式
+   ============================================================ */
+:root {
+  --bg-deep: #0a0e17;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2332;
+  --bg-nav: rgba(10,14,23,0.92);
+  --border: #1e2d3d;
+  --border-accent: #2a3f5f;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --cyan: #06b6d4;
+  --cyan-dim: #0891b2;
+  --cyan-glow: rgba(6,182,212,0.25);
+  --gold: #f59e0b;
+  --gold-dim: #d97706;
+  --gold-glow: rgba(245,158,11,0.2);
+  --green: #10b981;
+  --red: #ef4444;
+  --purple: #8b5cf6;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --transition: 0.2s ease;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html { scroll-behavior:smooth; }
+
+body {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Navigation ── */
+.nav {
+  position: sticky; top:0; z-index:100;
+  background: var(--bg-nav);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1rem;
+}
+.nav-inner {
+  max-width: 1280px; margin:0 auto;
+  display:flex; align-items:center; gap:0.25rem;
+  overflow-x:auto;
+}
+.nav-logo {
+  font-size:1.2rem; font-weight:700; color:var(--cyan);
+  white-space:nowrap; padding:0.75rem 0.5rem;
+  text-decoration:none; flex-shrink:0;
+}
+.nav-logo span { color:var(--gold); }
+.nav a {
+  color:var(--text-secondary); text-decoration:none;
+  padding:0.75rem 0.75rem; font-size:0.875rem;
+  white-space:nowrap; border-bottom:2px solid transparent;
+  transition: var(--transition);
+}
+.nav a:hover, .nav a.active { color:var(--cyan); border-bottom-color:var(--cyan); }
+
+/* ── Container ── */
+.container { max-width:1280px; margin:0 auto; padding:1.5rem 1rem; }
+
+/* ── Section ── */
+.section { margin-bottom:3rem; }
+
+/* ── Hero ── */
+.hero {
+  text-align:center; padding:3rem 1rem 2rem;
+  background: radial-gradient(ellipse at 50% 0%, rgba(6,182,212,0.08) 0%, transparent 60%);
+  border-bottom:1px solid var(--border);
+}
+.hero h1 {
+  font-size:clamp(2rem, 5vw, 3.5rem); font-weight:800;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--gold) 50%, var(--purple) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text; margin-bottom:0.75rem;
+}
+.hero .subtitle {
+  font-size:1.1rem; color:var(--text-secondary);
+  max-width:720px; margin:0 auto 2rem;
+}
+.hero .badge {
+  display:inline-block; background:var(--bg-card); border:1px solid var(--border-accent);
+  padding:0.25rem 0.75rem; border-radius:20px; font-size:0.8rem;
+  color:var(--text-secondary); margin:0.25rem;
+}
+.metrics {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
+  gap:1rem; max-width:800px; margin:2rem auto;
+}
+.metric-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:1.25rem; text-align:center;
+  transition:var(--transition);
+}
+.metric-card:hover {
+  border-color:var(--cyan); box-shadow:0 0 20px var(--cyan-glow);
+  transform:translateY(-2px);
+}
+.metric-card .value {
+  font-size:2rem; font-weight:800;
+  background:linear-gradient(135deg, var(--cyan), var(--gold));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.metric-card .label { color:var(--text-muted); font-size:0.85rem; margin-top:0.25rem; }
+
+/* ── Section Title ── */
+.section-title {
+  font-size:1.75rem; font-weight:700; margin-bottom:1.5rem;
+  display:flex; align-items:center; gap:0.75rem;
+}
+.section-title::before {
+  content:''; width:4px; height:28px; border-radius:2px;
+  background:linear-gradient(180deg, var(--cyan), var(--gold));
+}
+.section-title .num { color:var(--cyan); font-size:1rem; font-weight:400; }
+
+/* ── Cards ── */
+.card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:1.5rem;
+  transition:var(--transition);
+}
+.card:hover { border-color:var(--border-accent); box-shadow:var(--shadow); }
+
+.card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:1rem; }
+.card-grid-2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:1rem; }
+.card-grid-4 { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; }
+
+.card h3 { color:var(--cyan); font-size:1.05rem; margin-bottom:0.75rem; }
+.card p { color:var(--text-secondary); font-size:0.9rem; }
+.card .tag {
+  display:inline-block; padding:0.15rem 0.5rem; border-radius:4px;
+  font-size:0.75rem; font-weight:600; margin-top:0.5rem;
+}
+.tag-cyan { background:rgba(6,182,212,0.15); color:var(--cyan); }
+.tag-gold { background:rgba(245,158,11,0.15); color:var(--gold); }
+.tag-green { background:rgba(16,185,129,0.15); color:var(--green); }
+.tag-purple { background:rgba(139,92,246,0.15); color:var(--purple); }
+
+/* ── SVG Diagram ── */
+.diagram-wrap {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:1.5rem;
+  overflow-x:auto; text-align:center;
+}
+.diagram-wrap svg { max-width:100%; height:auto; }
+
+/* ── Table ── */
+.table-wrap { overflow-x:auto; }
+table {
+  width:100%; border-collapse:collapse; font-size:0.875rem;
+}
+thead { background:var(--bg-card); }
+th {
+  text-align:left; padding:0.75rem 1rem; color:var(--cyan);
+  font-weight:600; border-bottom:2px solid var(--border-accent);
+  white-space:nowrap;
+}
+td {
+  padding:0.65rem 1rem; border-bottom:1px solid var(--border);
+  color:var(--text-secondary);
+}
+tr:hover td { background:rgba(6,182,212,0.03); }
+td.pass { color:var(--green); font-weight:600; }
+td.fail { color:var(--red); }
+
+/* ── Collapsible ── */
+.collapsible {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:0.5rem;
+  overflow:hidden;
+}
+.collapse-header {
+  padding:0.85rem 1.25rem; cursor:pointer; display:flex;
+  align-items:center; justify-content:space-between;
+  user-select:none; transition:var(--transition);
+}
+.collapse-header:hover { background:rgba(6,182,212,0.05); }
+.collapse-header .arrow {
+  transition:transform 0.3s; color:var(--text-muted);
+  font-size:0.8rem;
+}
+.collapse-header.open .arrow { transform:rotate(90deg); }
+.collapse-body {
+  max-height:0; overflow:hidden; transition:max-height 0.35s ease;
+}
+.collapse-body.open { max-height:2000px; }
+.collapse-body-inner { padding:0 1.25rem 1rem; }
+
+/* ── Chart ── */
+.chart-wrap {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:1.5rem;
+}
+.chart-wrap canvas { max-height:350px; }
+.chart-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(400px,1fr)); gap:1.5rem; }
+
+/* ── Progress Bar ── */
+.progress-bar {
+  height:8px; background:var(--border); border-radius:4px;
+  overflow:hidden; margin-top:0.5rem;
+}
+.progress-fill {
+  height:100%; border-radius:4px;
+  background:linear-gradient(90deg, var(--cyan), var(--gold));
+  transition:width 0.8s ease;
+}
+
+/* ── Integrity Grid ── */
+.integrity-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:1rem; }
+.integrity-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:1.5rem; text-align:center;
+}
+.integrity-card .number {
+  font-size:2.5rem; font-weight:800; color:var(--green);
+}
+.integrity-card .small { font-size:1rem; color:var(--text-muted); }
+.integrity-card.pass { border-color:rgba(16,185,129,0.3); }
+
+/* ── Footer ── */
+.footer {
+  text-align:center; padding:2rem 1rem; border-top:1px solid var(--border);
+  color:var(--text-muted); font-size:0.8rem;
+}
+
+/* ── Link Button ── */
+.btn {
+  display:inline-block; padding:0.6rem 1.25rem; border-radius:6px;
+  font-size:0.9rem; font-weight:600; text-decoration:none;
+  transition:var(--transition); cursor:pointer; border:none;
+}
+.btn-cyan {
+  background:rgba(6,182,212,0.15); color:var(--cyan);
+  border:1px solid rgba(6,182,212,0.3);
+}
+.btn-cyan:hover { background:rgba(6,182,212,0.25); }
+.btn-gold {
+  background:rgba(245,158,11,0.15); color:var(--gold);
+  border:1px solid rgba(245,158,11,0.3);
+}
+.btn-gold:hover { background:rgba(245,158,11,0.25); }
+
+.flex-center { display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; }
+.mt-1 { margin-top:0.5rem; }
+.mt-2 { margin-top:1rem; }
+.mt-3 { margin-top:1.5rem; }
+.mb-2 { margin-bottom:1rem; }
+.text-center { text-align:center; }
+.text-muted { color:var(--text-muted); font-size:0.85rem; }
+
+/* ── Responsive ── */
+@media (max-width:768px) {
+  .nav-inner { gap:0; }
+  .nav a { padding:0.6rem 0.5rem; font-size:0.78rem; }
+  .hero { padding:2rem 0.5rem 1.5rem; }
+  .metrics { grid-template-columns:repeat(2,1fr); }
+  .card-grid, .card-grid-2, .card-grid-4 { grid-template-columns:1fr; }
+  .chart-grid { grid-template-columns:1fr; }
+  .container { padding:1rem 0.5rem; }
+}
+
+@media (max-width:480px) {
+  .metrics { grid-template-columns:1fr 1fr; }
+  .hero h1 { font-size:1.6rem; }
+}
+
+/* ── Animations ── */
+@keyframes fadeInUp {
+  from { opacity:0; transform:translateY(20px); }
+  to { opacity:1; transform:translateY(0); }
+}
+.animate { animation:fadeInUp 0.6s ease forwards; opacity:0; }
+.animate:nth-child(1) { animation-delay:0.1s; }
+.animate:nth-child(2) { animation-delay:0.2s; }
+.animate:nth-child(3) { animation-delay:0.3s; }
+.animate:nth-child(4) { animation-delay:0.4s; }
+
+/* ── Theory Paper ── */
+.value-gold {
+  font-size:2rem; font-weight:800; color:var(--gold);
+}
+.btn-primary {
+  display:inline-block; padding:0.75rem 1.75rem; border-radius:8px;
+  font-size:1rem; font-weight:600; text-decoration:none;
+  background:linear-gradient(135deg, rgba(6,182,212,0.2), rgba(245,158,11,0.2));
+  color:var(--cyan); border:1px solid rgba(6,182,212,0.4);
+  transition:var(--transition); cursor:pointer;
+}
+.btn-primary:hover {
+  background:linear-gradient(135deg, rgba(6,182,212,0.3), rgba(245,158,11,0.3));
+  box-shadow:0 0 20px var(--cyan-glow);
+  transform:translateY(-2px);
+}
+
+/* ── Fano Plane SVG ── */
+.fano-svg { max-width:320px; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     Navigation
+     ============================================================ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#hero" class="nav-logo">TOMAS<span>-AGI</span></a>
+    <a href="#hero" class="active" data-section="hero">首页概览</a>
+    <a href="#architecture" data-section="architecture">系统架构</a>
+    <a href="#concepts" data-section="concepts">核心概念</a>
+    <a href="#theory-paper" data-section="theory-paper">物理论文</a>
+    <a href="#runtime-safeguard" data-section="runtime-safeguard">运行时保障</a>
+    <a href="#llm-distiller" data-section="llm-distiller">LLM蒸馏</a>
+    <a href="#modules" data-section="modules">模块文档</a>
+    <a href="#benchmarks" data-section="benchmarks">性能基准</a>
+    <a href="#integrity" data-section="integrity">完整性报告</a>
+  </div>
+</nav>
+
+<!-- ============================================================
+     Section 1: Hero / 首页概览
+     ============================================================ -->
+<section id="hero" class="hero">
+  <h1>TOMAS-AGI v2.0</h1>
+  <p class="subtitle">
+    基于非结合谱图代数（NASGA）和谱折叠深度 δ 的具身通用人工智能系统内核<br>
+    <span style="color:var(--text-muted);font-size:0.9rem;">太乙互搏通用人工智能 · 复合体理学研究中心 © 2026</span>
+  </p>
+  <div>
+    <span class="badge">🏗️ 33 模块</span>
+    <span class="badge">📝 740K+ 代码</span>
+    <span class="badge">✅ 42/42 完整性自检</span>
+    <span class="badge">🎯 M1-M6 全部完成</span>
+    <span class="badge">🔬 NASGA 框架</span>
+    <span class="badge">δ 守恒·A1 公理</span>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card animate">
+      <div class="value">33</div>
+      <div class="label">代码模块</div>
+    </div>
+    <div class="metric-card animate">
+      <div class="value">740K+</div>
+      <div class="label">总代码量</div>
+    </div>
+    <div class="metric-card animate">
+      <div class="value">42/42</div>
+      <div class="label">完整性自检</div>
+    </div>
+    <div class="metric-card animate">
+      <div class="value">κ=7</div>
+      <div class="label">稳态锁定</div>
+    </div>
+  </div>
+
+  <div class="flex-center mt-3">
+    <a href="#architecture" class="btn btn-cyan">查看架构 →</a>
+    <a href="#benchmarks" class="btn btn-gold">性能基准 →</a>
+    <a href="#integrity" class="btn btn-cyan">完整性报告 →</a>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 2: System Architecture / 系统架构
+     ============================================================ -->
+<div class="container">
+<section id="architecture" class="section">
+  <h2 class="section-title"><span class="num">02</span> 系统架构</h2>
+
+  <!-- Architecture SVG Diagram -->
+  <div class="diagram-wrap mb-2">
+    <svg viewBox="0 0 900 620" xmlns="http://www.w3.org/2000/svg" style="max-width:900px;">
+      <defs>
+        <linearGradient id="gCyan" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#0891b2" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#d97706" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gPurple" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#10b981" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#059669" stop-opacity="0.7"/>
+        </linearGradient>
+        <filter id="glow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- Background grid -->
+      <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+        <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255,255,255,0.02)" stroke-width="0.5"/>
+      </pattern>
+      <rect width="900" height="620" fill="url(#grid)"/>
+
+      <!-- Layer labels -->
+      <text x="15" y="95" fill="#94a3b8" font-size="11" font-family="monospace">应用层</text>
+      <text x="15" y="235" fill="#94a3b8" font-size="11" font-family="monospace">逻辑层</text>
+      <text x="15" y="375" fill="#94a3b8" font-size="11" font-family="monospace">计算层</text>
+      <text x="15" y="555" fill="#94a3b8" font-size="11" font-family="monospace">数据层</text>
+
+      <!-- Layer dividers -->
+      <line x1="80" y1="120" x2="880" y2="120" stroke="#1e2d3d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="80" y1="260" x2="880" y2="260" stroke="#1e2d3d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="80" y1="400" x2="880" y2="400" stroke="#1e2d3d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="80" y1="580" x2="880" y2="580" stroke="#1e2d3d" stroke-width="1" stroke-dasharray="4,4"/>
+
+      <!-- ── Application Layer (y:40-110) ── -->
+      <rect x="100" y="50" width="200" height="55" rx="6" fill="#111827" stroke="url(#gCyan)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="200" y="73" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">CLI 工具链</text>
+      <text x="200" y="91" fill="#64748b" font-size="10" text-anchor="middle">uscsctl / tomas_bench / integrity_check</text>
+
+      <rect x="400" y="50" width="200" height="55" rx="6" fill="#111827" stroke="url(#gGold)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="500" y="73" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">A6-BS 基准测试</text>
+      <text x="500" y="91" fill="#64748b" font-size="10" text-anchor="middle">五级 Cold-Start δ 集成</text>
+
+      <rect x="700" y="50" width="170" height="55" rx="6" fill="#111827" stroke="#2a3f5f" stroke-width="1"/>
+      <text x="785" y="73" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Web Dashboard</text>
+      <text x="785" y="91" fill="#64748b" font-size="10" text-anchor="middle">可视化监控面板</text>
+
+      <!-- ── Logic Layer (y:135-250) ── -->
+      <rect x="100" y="140" width="180" height="100" rx="6" fill="#111827" stroke="url(#gCyan)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="190" y="162" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Φ-Gate 语义门控</text>
+      <text x="190" y="180" fill="#64748b" font-size="10" text-anchor="middle">八状态机 · δ 联动</text>
+      <text x="190" y="196" fill="#64748b" font-size="10" text-anchor="middle">双分支路由</text>
+      <text x="190" y="216" fill="#0891b2" font-size="9" text-anchor="middle">phi_gate.c</text>
+
+      <rect x="350" y="140" width="220" height="100" rx="6" fill="#111827" stroke="url(#gPurple)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="460" y="162" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">T-Processor 主模块</text>
+      <text x="460" y="180" fill="#64748b" font-size="10" text-anchor="middle">δ 参数管理 · ioctl 接口</text>
+      <text x="460" y="196" fill="#64748b" font-size="10" text-anchor="middle">Branch A (经典) + Branch B (量子)</text>
+      <text x="460" y="216" fill="#7c3aed" font-size="9" text-anchor="middle">tproc_core.c</text>
+
+      <rect x="640" y="140" width="230" height="100" rx="6" fill="#111827" stroke="url(#gGold)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="755" y="162" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">CI Gate + ST Auditor</text>
+      <text x="755" y="180" fill="#64748b" font-size="10" text-anchor="middle">因果隔离 · 光锥校验</text>
+      <text x="755" y="196" fill="#64748b" font-size="10" text-anchor="middle">滑动窗口漂移检测</text>
+      <text x="755" y="216" fill="#d97706" font-size="9" text-anchor="middle">ci_gate.c / st_auditor.c</text>
+
+      <!-- ── Compute Layer (y:270-390) ── -->
+      <rect x="100" y="280" width="180" height="100" rx="6" fill="#111827" stroke="url(#gCyan)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="190" y="302" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">NASGA 核心</text>
+      <text x="190" y="320" fill="#64748b" font-size="10" text-anchor="middle">八元数 Fano 乘法表</text>
+      <text x="190" y="336" fill="#64748b" font-size="10" text-anchor="middle">结合子 · Moufang · ξ_c</text>
+      <text x="190" y="356" fill="#0891b2" font-size="9" text-anchor="middle">nasga_core.py / octonion.c</text>
+
+      <rect x="350" y="280" width="180" height="100" rx="6" fill="#111827" stroke="url(#gPurple)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="440" y="302" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">δ-mem 记忆融合</text>
+      <text x="440" y="320" fill="#64748b" font-size="10" text-anchor="middle">L1 热缓存 · L2 冷缓存</text>
+      <text x="440" y="336" fill="#64748b" font-size="10" text-anchor="middle">权重分配 · 压缩</text>
+      <text x="440" y="356" fill="#7c3aed" font-size="9" text-anchor="middle">delta_mem.c</text>
+
+      <rect x="600" y="280" width="180" height="100" rx="6" fill="#111827" stroke="url(#gGold)" stroke-width="1.5" filter="url(#glow)"/>
+      <text x="690" y="302" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">κ=7 稳态调节器</text>
+      <text x="690" y="320" fill="#64748b" font-size="10" text-anchor="middle">PID + 前馈 + I抗饱和</text>
+      <text x="690" y="336" fill="#64748b" font-size="10" text-anchor="middle">6 ioctl 接口</text>
+      <text x="690" y="356" fill="#d97706" font-size="9" text-anchor="middle">kappa_reg.c</text>
+
+      <!-- ── Data Layer (y:410-570) ── -->
+      <rect x="100" y="420" width="170" height="140" rx="6" fill="#111827" stroke="url(#gCyan)" stroke-width="1.5"/>
+      <text x="185" y="442" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Python 仿真层</text>
+      <text x="185" y="462" fill="#64748b" font-size="10" text-anchor="middle">sim/ · 7 文件 · ~80K</text>
+      <text x="185" y="478" fill="#64748b" font-size="10" text-anchor="middle">octonion_py.py</text>
+      <text x="185" y="494" fill="#64748b" font-size="10" text-anchor="middle">fold_depth_py.py</text>
+      <text x="185" y="510" fill="#64748b" font-size="10" text-anchor="middle">spectral_laplacian_py.py</text>
+      <text x="185" y="526" fill="#64748b" font-size="10" text-anchor="middle">tomas_sim.py · a6_bs · xi_c</text>
+
+      <rect x="310" y="420" width="170" height="140" rx="6" fill="#111827" stroke="url(#gGreen)" stroke-width="1.5"/>
+      <text x="395" y="442" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Linux 内核模块</text>
+      <text x="395" y="462" fill="#64748b" font-size="10" text-anchor="middle">kernel/ · 10 模块 · ~244K</text>
+      <text x="395" y="478" fill="#64748b" font-size="10" text-anchor="middle">tproc_core.c</text>
+      <text x="395" y="494" fill="#64748b" font-size="10" text-anchor="middle">octonion.c · phi_gate.c</text>
+      <text x="395" y="510" fill="#64748b" font-size="10" text-anchor="middle">kappa_reg.c · ci_gate.c</text>
+      <text x="395" y="526" fill="#64748b" font-size="10" text-anchor="middle">delta_mem.c · eml_map.c</text>
+
+      <rect x="520" y="420" width="170" height="140" rx="6" fill="#111827" stroke="url(#gPurple)" stroke-width="1.5"/>
+      <text x="605" y="442" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">CUDA GPU 加速</text>
+      <text x="605" y="462" fill="#64748b" font-size="10" text-anchor="middle">kernel/ · 3 .cu · ~70K</text>
+      <text x="605" y="478" fill="#64748b" font-size="10" text-anchor="middle">cuda_octonion.cu</text>
+      <text x="605" y="494" fill="#64748b" font-size="10" text-anchor="middle">cuda_laplacian.cu</text>
+      <text x="605" y="510" fill="#64748b" font-size="10" text-anchor="middle">cuda_delta_mem.cu</text>
+
+      <rect x="730" y="420" width="150" height="140" rx="6" fill="#111827" stroke="url(#gGold)" stroke-width="1.5"/>
+      <text x="805" y="442" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">FPGA RTL</text>
+      <text x="805" y="462" fill="#64748b" font-size="10" text-anchor="middle">rtl/ · 3 .v</text>
+      <text x="805" y="478" fill="#64748b" font-size="10" text-anchor="middle">octonion_mul.v</text>
+      <text x="805" y="494" fill="#64748b" font-size="10" text-anchor="middle">delta_compute.v</text>
+      <text x="805" y="510" fill="#64748b" font-size="10" text-anchor="middle">spectral_engine.v</text>
+
+      <!-- Data flow arrows -->
+      <defs><marker id="arrowCyan" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#06b6d4" opacity="0.5"/></marker></defs>
+
+      <!-- App → Logic -->
+      <line x1="200" y1="105" x2="200" y2="135" stroke="#06b6d4" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+      <line x1="500" y1="105" x2="500" y2="135" stroke="#f59e0b" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+
+      <!-- Logic → Compute -->
+      <line x1="190" y1="240" x2="190" y2="275" stroke="#06b6d4" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+      <line x1="460" y1="240" x2="460" y2="275" stroke="#8b5cf6" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+      <line x1="755" y1="240" x2="755" y2="275" stroke="#f59e0b" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+
+      <!-- Compute → Data -->
+      <line x1="190" y1="380" x2="190" y2="415" stroke="#06b6d4" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+      <line x1="440" y1="380" x2="440" y2="415" stroke="#8b5cf6" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+      <line x1="690" y1="380" x2="690" y2="415" stroke="#f59e0b" stroke-width="1" opacity="0.3" marker-end="url(#arrowCyan)"/>
+
+      <!-- USCSFS -->
+      <rect x="20" y="460" width="60" height="60" rx="4" fill="#111827" stroke="#2a3f5f" stroke-width="1"/>
+      <text x="50" y="486" fill="#64748b" font-size="9" text-anchor="middle">USCS</text>
+      <text x="50" y="500" fill="#64748b" font-size="8" text-anchor="middle">FS</text>
+      <line x1="80" y1="490" x2="95" y2="490" stroke="#1e2d3d" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div class="card-grid-2 mt-2">
+    <div class="card">
+      <h3>🔄 数据流</h3>
+      <p style="font-size:0.85rem;">用户输入 → Φ-Gate 语义门控 → 双分支路由 → T-Processor 推理 → κ=7 稳态融合 → CI Gate 因果隔离 → ST Auditor 倾斜审计 → 输出结果</p>
+      <span class="tag tag-cyan">δ 守恒全程追踪</span>
+    </div>
+    <div class="card">
+      <h3>📐 四层架构</h3>
+      <p style="font-size:0.85rem;"><strong>数据层</strong>：Python 仿真 + Linux 内核 + CUDA GPU + FPGA RTL<br>
+      <strong>计算层</strong>：NASGA 核心 + δ-mem 融合 + κ=7 调节<br>
+      <strong>逻辑层</strong>：Φ-Gate + T-Processor + CI Gate<br>
+      <strong>应用层</strong>：CLI 工具链 + A6-BS 基准 + Dashboard</p>
+      <span class="tag tag-gold">M1-M6 全里程碑</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 3: Core Concepts / 核心概念
+     ============================================================ -->
+<section id="concepts" class="section">
+  <h2 class="section-title"><span class="num">03</span> 核心概念</h2>
+
+  <div class="card-grid">
+    <!-- δ -->
+    <div class="card animate">
+      <h3>📐 δ 谱折叠深度</h3>
+      <p>v2.0 核心序参量。定义：δ = ||[a,b,c]|| / (||a||·||b||·||c|| + ε)。δ=0 为经典极限（布尔逻辑），δ>0 为量子极限（非结合代数），δ≈7 为 κ=7 稳态锁定。</p>
+      <span class="tag tag-cyan">fundamental</span>
+    </div>
+
+    <!-- A1 Axiom -->
+    <div class="card animate">
+      <h3>⚖️ A1 公理（δ 守恒）</h3>
+      <p>对于任意封闭系统 S，其 EML 谱图的总谱折叠深度守恒：δ_total = Σ_i δ_i = constant。类比能量守恒，是 TOMAS-AGI 的第一基本定律。</p>
+      <span class="tag tag-gold">axiom</span>
+    </div>
+
+    <!-- NASGA -->
+    <div class="card animate">
+      <h3>🔷 NASGA 非结合谱图代数</h3>
+      <p>TOMAS-AGI 的统一数学框架。基于八元数非结合代数，通过 associator（结合子）度量非结合性，ξ_c 为效能指标，Moufang 恒等式约束代数结构。</p>
+      <span class="tag tag-purple">framework</span>
+    </div>
+
+    <!-- Fano Plane -->
+    <div class="card animate">
+      <h3>🕸️ 八元数 Fano 平面</h3>
+      <p>八元数 e0-e7 的乘法规则由 Fano 平面（7 条直线、7 个点）决定。每条直线 {i,j,k} 满足 e_i·e_j = ±e_k。非结合性源于 Fano 平面的射影几何结构。</p>
+      <span class="tag tag-cyan">algebra</span>
+    </div>
+
+    <!-- Non-associative Laplacian -->
+    <div class="card animate">
+      <h3>📊 非结合 Laplacian Δ_δ</h3>
+      <p>Δ_δ φ(i) = Σ_j w(i,j)·(φ(j)-φ(i)) + α·associator_term(i)。在标准图 Laplacian 中加入结合子修正项，使谱结构反映非结合代数特性。</p>
+      <span class="tag tag-purple">spectral</span>
+    </div>
+
+    <!-- κ=7 -->
+    <div class="card animate">
+      <h3>🔒 κ=7 稳态调节</h3>
+      <p>系统在 κ=7 处达到稳态平衡（δ≈7.0）。κ 调节器采用 PID + 前馈 + 积分抗饱和策略，通过 6 个 ioctl 接口实现精确控制。</p>
+      <span class="tag tag-gold">control</span>
+    </div>
+
+    <!-- Φ-Gate -->
+    <div class="card animate">
+      <h3>🚪 Φ-Gate 语义门控</h3>
+      <p>八状态语义门控机，负责将输入分类并路由到经典推理（Branch A）或量子推理（Branch B）分支。δ 联动确保门控决策与系统折叠深度协调。</p>
+      <span class="tag tag-cyan">gate</span>
+    </div>
+
+    <!-- CI Gate -->
+    <div class="card animate">
+      <h3>⏱️ CI Gate 因果隔离</h3>
+      <p>因果隔离门，通过光锥校验确保输出满足因果律。防止非结合推理产生的悖论态影响系统的因果关系判断。</p>
+      <span class="tag tag-purple">causality</span>
+    </div>
+
+    <!-- δ-mem -->
+    <div class="card animate">
+      <h3>💾 δ-mem 记忆融合</h3>
+      <p>L1 热缓存 + L2 冷缓存双层架构。根据 δ 值加权分配记忆，在双分支间实现高效的谱图信息融合与压缩。</p>
+      <span class="tag tag-gold">memory</span>
+    </div>
+
+    <!-- ST Auditor -->
+    <div class="card animate">
+      <h3>📏 ST Auditor 倾斜审计</h3>
+      <p>滑动窗口漂移检测器，持续监控系统的时空倾斜。当 δ 值偏离稳态范围时触发告警，配合 κ 调节器进行校正。</p>
+      <span class="tag tag-cyan">audit</span>
+    </div>
+
+    <!-- δ_threshold -->
+    <div class="card animate">
+      <h3>🎯 δ_threshold 悖论耐受</h3>
+      <p>δ ≥ δ_critical (默认 0.5) 时系统具备悖论耐受能力。当 δ < δ_critical 时，谱结合子过小，系统退化为近似结合代数，丧失双分歧态保留能力。</p>
+      <span class="tag tag-gold">threshold</span>
+    </div>
+
+    <!-- EML -->
+    <div class="card animate">
+      <h3>🗺️ EML 谱图内存映射</h3>
+      <p>将谱图结构映射到内存的多级缓存系统。支持快照、持久化和多级缓存策略，为 δ 计算提供高效的图数据访问。</p>
+      <span class="tag tag-purple">mapping</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section: 物理论文 / Theory Paper
+     ============================================================ -->
+<section id="theory-paper" class="section">
+  <h2 class="section-title"><span class="num">📄</span> 物理论文 <span style="font-size:0.85rem;color:var(--text-muted);">— NASGA 标准模型涌现</span></h2>
+  <p style="color:var(--text-secondary);margin-bottom:1.5rem;">可检验唯象学预言（2026-06-13 发布）</p>
+
+  <!-- 子区域 A：核心预言卡片 -->
+  <h3 style="color:var(--gold);font-size:1.15rem;margin-bottom:1rem;">🔮 核心预言</h3>
+  <div class="card-grid-4 mb-2">
+    <div class="metric-card">
+      <div class="value-gold">0.048</div>
+      <div class="label">张量-标量比 <em>r</em></div>
+      <div style="color:var(--text-muted);font-size:0.75rem;margin-top:0.5rem;">实验: LiteBIRD · 窗口: ~2032</div>
+    </div>
+    <div class="metric-card">
+      <div class="value-gold">8.6 meV</div>
+      <div class="label">中微子质量 m₂</div>
+      <div style="color:var(--text-muted);font-size:0.75rem;margin-top:0.5rem;">实验: DUNE · 窗口: ~2031</div>
+    </div>
+    <div class="metric-card">
+      <div class="value-gold">1.28π</div>
+      <div class="label">中微子 CP 相位 δ_CP</div>
+      <div style="color:var(--text-muted);font-size:0.75rem;margin-top:0.5rem;">实验: DUNE · 窗口: ~2035</div>
+    </div>
+    <div class="metric-card">
+      <div class="value-gold">&lt; 5.5×10⁻¹²</div>
+      <div class="label">强 CP 角 θ_eff</div>
+      <div style="color:var(--text-muted);font-size:0.75rem;margin-top:0.5rem;">实验: n2EDM · 窗口: ~2035</div>
+    </div>
+  </div>
+
+  <!-- 子区域 B：理论亮点 -->
+  <h3 style="color:var(--cyan);font-size:1.15rem;margin:1.5rem 0 1rem;">💡 理论亮点</h3>
+  <div class="card-grid">
+    <div class="card">
+      <h3>E6 嵌入修正</h3>
+      <p>修正 E7 致命代数错误，E6(52维)极大子群可容纳 SU(3)×SU(2)×U(1)</p>
+      <span class="tag tag-cyan">代数几何</span>
+    </div>
+    <div class="card">
+      <h3>非结合手征性</h3>
+      <p>Z₂ 分次自然涌现三代手征费米子，维数完全匹配 SM</p>
+      <span class="tag tag-gold">手征费米子</span>
+    </div>
+    <div class="card">
+      <h3>诚实局限声明</h3>
+      <p>sin²θ_W 理论值存在 2.1σ 偏差（需两圈修正），宇宙学常数问题未解决</p>
+      <span class="tag tag-purple">开放问题</span>
+    </div>
+  </div>
+
+  <!-- 子区域 C：PDF 下载 -->
+  <div class="text-center mt-3">
+    <a href="docs/NASGA标准模型涌现与可检验唯象学.pdf" class="btn btn-primary" download>📄 下载完整论文 (PDF, 28页)</a>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section: 运行时保障 / Runtime Safeguard
+     ============================================================ -->
+<section id="runtime-safeguard" class="section">
+  <h2 class="section-title"><span class="num">🛡️</span> 运行时保障 <span style="font-size:0.85rem;color:var(--text-muted);">— 漂移检测 + δ-mem 记忆融合</span></h2>
+
+  <!-- 漂移检测架构 SVG -->
+  <div class="diagram-wrap mb-2">
+    <svg viewBox="0 0 860 180" xmlns="http://www.w3.org/2000/svg" style="max-width:860px;">
+      <defs>
+        <linearGradient id="gCyanRs" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#0891b2" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gGoldRs" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#d97706" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gPurpleRs" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.7"/>
+        </linearGradient>
+        <marker id="arrowRs" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#06b6d4" opacity="0.6"/>
+        </marker>
+      </defs>
+
+      <!-- Node 1: ψ 语义向量 -->
+      <rect x="20" y="55" width="140" height="70" rx="8" fill="#111827" stroke="url(#gCyanRs)" stroke-width="1.5"/>
+      <text x="90" y="82" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">ψ 语义向量</text>
+      <text x="90" y="102" fill="#64748b" font-size="10" text-anchor="middle">World Semantic Vec</text>
+
+      <!-- Arrow 1→2 -->
+      <line x1="160" y1="90" x2="195" y2="90" stroke="#06b6d4" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowRs)"/>
+
+      <!-- Node 2: Φ 滑动窗口 -->
+      <rect x="200" y="55" width="140" height="70" rx="8" fill="#111827" stroke="url(#gGoldRs)" stroke-width="1.5"/>
+      <text x="270" y="82" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Φ 滑动窗口</text>
+      <text x="270" y="102" fill="#64748b" font-size="10" text-anchor="middle">Cosine Similarity</text>
+
+      <!-- Arrow 2→3 -->
+      <line x1="340" y1="90" x2="375" y2="90" stroke="#f59e0b" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowRs)"/>
+
+      <!-- Node 3: 加权 CV 计算 -->
+      <rect x="380" y="55" width="140" height="70" rx="8" fill="#111827" stroke="url(#gPurpleRs)" stroke-width="1.5"/>
+      <text x="450" y="82" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">加权 CV</text>
+      <text x="450" y="102" fill="#64748b" font-size="10" text-anchor="middle">Exp-Decay Weighted</text>
+
+      <!-- Arrow 3→4 -->
+      <line x1="520" y1="90" x2="555" y2="90" stroke="#8b5cf6" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowRs)"/>
+
+      <!-- Node 4: Sigmoid 衰减 -->
+      <rect x="560" y="55" width="140" height="70" rx="8" fill="#111827" stroke="url(#gCyanRs)" stroke-width="1.5"/>
+      <text x="630" y="82" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Sigmoid 衰减</text>
+      <text x="630" y="102" fill="#64748b" font-size="10" text-anchor="middle">γ(CV, dCV/dt)</text>
+
+      <!-- Arrow 4→5 -->
+      <line x1="700" y1="90" x2="735" y2="90" stroke="#06b6d4" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowRs)"/>
+
+      <!-- Node 5: 漂移确认 -->
+      <rect x="740" y="55" width="100" height="70" rx="8" fill="#111827" stroke="url(#gGoldRs)" stroke-width="1.5"/>
+      <text x="790" y="82" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">漂移确认</text>
+      <text x="790" y="102" fill="#64748b" font-size="10" text-anchor="middle">Schmitt</text>
+
+      <!-- Flow label -->
+      <text x="430" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="monospace">漂移检测数据流</text>
+      <line x1="50" y1="38" x2="810" y2="38" stroke="#1e2d3d" stroke-width="0.5" stroke-dasharray="3,3"/>
+
+      <!-- Feedback arrow (bottom) -->
+      <path d="M 790 125 Q 790 160, 90 160 Q 20 160, 20 125" fill="none" stroke="#8b5cf6" stroke-width="1" opacity="0.3" stroke-dasharray="4,3"/>
+      <text x="420" y="168" fill="#64748b" font-size="9" text-anchor="middle">δ-mem S-update 阻尼反馈</text>
+    </svg>
+  </div>
+
+  <!-- 4 个特性卡片 (2×2) -->
+  <h3 style="color:var(--cyan);font-size:1.15rem;margin-bottom:1rem;">🔧 漂移检测核心机制</h3>
+  <div class="card-grid" style="grid-template-columns:repeat(auto-fit, minmax(300px,1fr));">
+    <div class="card animate">
+      <h3>📈 连续 Sigmoid 自调</h3>
+      <p style="font-size:0.85rem;">v1.5 用平滑 sigmoid 替代硬编码三阶段查表，消除阶段边界不连续：</p>
+      <p style="font-size:0.82rem;color:var(--gold);margin-top:0.5rem;font-family:monospace;">γ(CV, dCV/dt) = γ<sub>max</sub> − Δγ·σ((CV−CV<sub>mid</sub>)/T)·slope_factor</p>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-top:0.3rem;">CV&lt;&lt;cv_mid → γ≈γ<sub>max</sub>（慢遗忘）；CV&gt;&gt;cv_mid → γ≈γ<sub>min</sub>（快遗忘）</p>
+      <span class="tag tag-gold">v1.5</span>
+    </div>
+    <div class="card animate">
+      <h3>🔄 Schmitt 触发器</h3>
+      <p style="font-size:0.85rem;">2 轮迟滞确认 + 即时退出，消除瞬时噪声误报：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">进入漂移：CV 连续 <strong style="color:var(--cyan);">2 轮</strong>超阈值才确认</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">退出漂移：CV 降至阈值以下 <strong style="color:var(--green);">立即退出</strong>（快恢复学习）</p>
+      <span class="tag tag-cyan">hysteresis</span>
+    </div>
+    <div class="card animate">
+      <h3>⚙️ 超参自动适配</h3>
+      <p style="font-size:0.85rem;">HyperParamAdapter 每 20 轮基于 CV 分位数自动调整：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">• <strong style="color:var(--purple);">cv_mid</strong>：滚动 60 分位数</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• <strong style="color:var(--cyan);">γ_max</strong>：稳定度比例驱动 (0.70~0.95)</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• <strong style="color:var(--gold);">γ_min</strong>：最差 CV 驱动 (0.10~0.35)</p>
+      <span class="tag tag-purple">v1.6</span>
+    </div>
+    <div class="card animate">
+      <h3>📊 稳定性分析</h3>
+      <p style="font-size:0.85rem;">analyze_stability() 自动识别 Φ 序列中的区域：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">• <strong style="color:var(--green);">stable</strong>：CV &lt; 0.15（语义稳定）</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• <strong style="color:var(--gold);">transitional</strong>：0.15 ≤ CV &lt; 0.30（过渡态）</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• <strong style="color:var(--red);">drifting</strong>：CV ≥ 0.30（语义漂移）</p>
+      <span class="tag tag-green">analysis</span>
+    </div>
+  </div>
+
+  <!-- 2 个 δ-mem L1/L2 卡片 -->
+  <h3 style="color:var(--purple);font-size:1.15rem;margin:1.5rem 0 1rem;">💾 δ-mem 记忆融合 (L1/L2)</h3>
+  <div class="card-grid-2">
+    <div class="card animate">
+      <h3>🔥 L1 热缓存 (SMatrix)</h3>
+      <p style="font-size:0.85rem;">8×8 在线联想记忆矩阵，Delta Rule 逐 token 更新：</p>
+      <p style="font-size:0.82rem;color:var(--gold);margin-top:0.5rem;font-family:monospace;">S<sub>t</sub> = λ·S<sub>t-1</sub> + β·(v − S·k)·k<sup>T</sup></p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">• 仅 64 floats 极低开销（8×8 × float32 = 256 bytes）</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• λ=0.95 指数遗忘 + β=0.1 增量学习</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• SHA-256 proof 完整性校验</p>
+      <span class="tag tag-cyan">L1 Hot Cache</span>
+    </div>
+    <div class="card animate">
+      <h3>❄️ L2 冷存储 (Φ-Gate)</h3>
+      <p style="font-size:0.85rem;">当 Φ &gt; 0.85 时 flush S → 持久化 Episodic Memory：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">• Φ-Gate 门控触发 L1→L2 刷出</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• 软重置后保留 10% 残余（S × 0.1）</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• to_dict / from_dict 序列化往返一致</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);">• is_dirty_since_last_flush() 脏检查</p>
+      <span class="tag tag-purple">L2 Cold Storage</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section: LLM 蒸馏 / LLM Distiller
+     ============================================================ -->
+<section id="llm-distiller" class="section">
+  <h2 class="section-title"><span class="num">🧪</span> LLM 蒸馏 <span style="font-size:0.85rem;color:var(--text-muted);">— 将世界知识压缩进 EML 图</span></h2>
+
+  <!-- 蒸馏架构 SVG -->
+  <div class="diagram-wrap mb-2">
+    <svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" style="max-width:860px;">
+      <defs>
+        <linearGradient id="gDsRed" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ef4444" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#dc2626" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gDsCyan" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#0891b2" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gDsPurp" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="gDsGreen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#10b981" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#059669" stop-opacity="0.7"/>
+        </linearGradient>
+        <marker id="arrowDs" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#64748b" opacity="0.6"/>
+        </marker>
+      </defs>
+
+      <!-- Phase 1: 世界知识 -->
+      <rect x="15" y="40" width="120" height="60" rx="8" fill="#111827" stroke="url(#gDsRed)" stroke-width="1.5"/>
+      <text x="75" y="65" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">🌍 世界知识</text>
+      <text x="75" y="82" fill="#64748b" font-size="9" text-anchor="middle">文本语料 / 文档</text>
+      <line x1="135" y1="70" x2="168" y2="70" stroke="#64748b" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowDs)"/>
+
+      <!-- Phase 2: LLM Distiller -->
+      <rect x="173" y="40" width="130" height="60" rx="8" fill="#111827" stroke="url(#gDsCyan)" stroke-width="1.5"/>
+      <text x="238" y="60" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">🤖 DeepSeek</text>
+      <text x="238" y="76" fill="#64748b" font-size="9" text-anchor="middle">概念提取 + 关系挖掘</text>
+      <text x="238" y="90" fill="#f59e0b" font-size="8" text-anchor="middle">蒸馏完成后可移除</text>
+      <line x1="303" y1="70" x2="336" y2="70" stroke="#64748b" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowDs)"/>
+
+      <!-- Phase 3: EML Graph -->
+      <rect x="341" y="40" width="130" height="60" rx="8" fill="#111827" stroke="url(#gDsPurp)" stroke-width="1.5"/>
+      <text x="406" y="65" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">🕸️ EML 图</text>
+      <text x="406" y="82" fill="#64748b" font-size="9" text-anchor="middle">顶点·概念 / 边·关系</text>
+      <line x1="471" y1="70" x2="504" y2="70" stroke="#64748b" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowDs)"/>
+
+      <!-- Phase 4: Token Bridge -->
+      <rect x="509" y="40" width="130" height="60" rx="8" fill="#111827" stroke="url(#gDsGreen)" stroke-width="1.5"/>
+      <text x="574" y="65" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">🌉 Token Bridge</text>
+      <text x="574" y="82" fill="#64748b" font-size="9" text-anchor="middle">Encoder / Decoder</text>
+      <line x1="639" y1="70" x2="672" y2="70" stroke="#64748b" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowDs)"/>
+
+      <!-- Phase 5: 推理输出 -->
+      <rect x="677" y="40" width="130" height="60" rx="8" fill="#111827" stroke="url(#gDsRed)" stroke-width="1.5"/>
+      <text x="742" y="65" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">🧠 无LLM推理</text>
+      <text x="742" y="82" fill="#64748b" font-size="9" text-anchor="middle">EML图 + TBridge</text>
+
+      <!-- Bottom annotation -->
+      <text x="430" y="120" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="monospace">LLM 蒸馏流水线：知识 → 图 → 推理（LLM 仅在阶段②参与）</text>
+      <line x1="30" y1="128" x2="830" y2="128" stroke="#1e2d3d" stroke-width="0.5" stroke-dasharray="3,3"/>
+
+      <!-- Key metric below -->
+      <text x="430" y="155" fill="#64748b" font-size="10" text-anchor="middle">𝕀(X) = α·norm_freq + β·importance + (1-α-β)·consistency → EML 边权重</text>
+      <text x="430" y="175" fill="#64748b" font-size="10" text-anchor="middle">φ(i) ∈ ℝ⁸ = text_to_octonion(concept) → EML 顶点八元数场</text>
+    </svg>
+  </div>
+
+  <!-- 核心机制卡片 (2x2) -->
+  <h3 style="color:var(--cyan);font-size:1.15rem;margin-bottom:1rem;">🔬 蒸馏机制</h3>
+  <div class="card-grid" style="grid-template-columns:repeat(auto-fit, minmax(300px,1fr));">
+    <div class="card animate">
+      <h3>📝 概念提取</h3>
+      <p style="font-size:0.85rem;">LLM 从语料中提取 <strong style="color:var(--cyan);">≤30 个关键概念</strong>，每个概念附带：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">
+        • <strong>importance</strong>：LLM 评估的概念重要性（0~1）<br/>
+        • <strong>context</strong>：概念在语料中的上下文描述<br/>
+        • <strong>φ(i)</strong>：SHA-256 哈希 → 八元数值场投影
+      </p>
+      <span class="tag tag-cyan">1→30 概念</span>
+    </div>
+    <div class="card animate">
+      <h3>🔗 关系挖掘</h3>
+      <p style="font-size:0.85rem;">基于概念列表，LLM 提取 <strong style="color:var(--gold);">语义关系</strong>，存入 EML 边：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">
+        • <strong>关系类型</strong>：is_a, part_of, used_in, related_to<br/>
+        • <strong>strength</strong>：关系强度评分（0~1）<br/>
+        • <strong>w_δ</strong>：经 δ 加权后的边权重
+      </p>
+      <span class="tag tag-gold">→ 47 关系</span>
+    </div>
+    <div class="card animate">
+      <h3>📊 𝕀(X) 存在度</h3>
+      <p style="font-size:0.85rem;">信息存在度 𝕀(X) = 概念在 EML 图中的"实在性"度量：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">
+        • <strong>频率分量</strong>：概念在语料中的归一化出现频率<br/>
+        • <strong>重要性分量</strong>：LLM 评估的概念重要度<br/>
+        • <strong>一致性分量</strong>：概念跨上下文稳定性
+      </p>
+      <span class="tag tag-purple">𝕀(X) ∈ [0,1]</span>
+    </div>
+    <div class="card animate">
+      <h3>🌉 Token Bridge</h3>
+      <p style="font-size:0.85rem;">蒸馏完成后，LLM 本体可移除，仅保留轻量 Bridge：</p>
+      <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.5rem;">
+        • <strong>Encoder</strong>：Token → 八元数 φ(i) ∈ ℝ⁸<br/>
+        • <strong>Decoder</strong>：φ(i) → Token logits<br/>
+        • <strong>目标</strong>：模型大小 &lt; 100MB
+      </p>
+      <span class="tag tag-green">目标 &lt;100MB</span>
+    </div>
+  </div>
+
+  <!-- 蒸馏结果面板 -->
+  <h3 style="color:var(--gold);font-size:1.15rem;margin:2rem 0 1rem;">📋 首次蒸馏结果（AI 知识语料 → EML 图）</h3>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.87rem;">
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">语料大小</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;"><strong style="color:var(--cyan);">715 字符</strong>（5 段 AI 知识文本）</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">蒸馏模型</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;">DeepSeek Chat (deepseek-chat)</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">EML 顶点</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;"><strong style="color:var(--green);">30</strong> 个概念</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">EML 边</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;"><strong style="color:var(--gold);">47</strong> 条关系</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">平均 𝕀(X)</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;"><strong style="color:var(--purple);">0.9120</strong></td>
+      </tr>
+      <tr>
+        <td style="padding:0.5rem 1rem;color:var(--text-muted);">EML 图文件</td>
+        <td style="padding:0.5rem 1rem;font-family:monospace;">distilled_knowledge.eml（<strong style="color:var(--cyan);">3,976 字节</strong>）</td>
+      </tr>
+    </table>
+    <div style="margin-top:1rem;padding:0.75rem;background:rgba(16,185,129,0.1);border-radius:6px;font-size:0.82rem;color:var(--green);">
+      ✅ 压缩比：<strong>715 字符语料 → 3,976 字节 EML 图</strong>（知识密度 = 1.8 概念/百字符）
+    </div>
+  </div>
+
+  <!-- 运行命令 -->
+  <h3 style="color:var(--cyan);font-size:1.15rem;margin:2rem 0 1rem;">🚀 蒸馏命令</h3>
+  <div class="card" style="font-family:monospace;font-size:0.85rem;">
+    <p style="color:var(--text-muted);margin-bottom:0.5rem;"># 从文件蒸馏</p>
+    <code style="color:var(--cyan);">python sim/llm_distiller.py --distill data/sample_knowledge.txt</code>
+    <br/><br/>
+    <p style="color:var(--text-muted);margin-bottom:0.5rem;"># 从 Python API 调用</p>
+    <code style="color:var(--green);">from sim.llm_distiller import LLMDistiller, DistillerConfig</code><br/>
+    <code style="color:var(--green);">distiller = LLMDistiller(config)</code><br/>
+    <code style="color:var(--green);">builder = distiller.distill(text)</code><br/>
+    <code style="color:var(--green);">distiller.save_eml_graph("knowledge.eml")</code>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 4: Module Documentation / 模块文档
+     ============================================================ -->
+<section id="modules" class="section">
+  <h2 class="section-title"><span class="num">04</span> 模块文档 <span style="font-size:0.85rem;color:var(--text-muted);">— 33 个模块全覆盖</span></h2>
+
+  <!-- M1 Python Simulation -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m1">
+      <span><strong style="color:var(--cyan);">M1</strong> Python 仿真层 — <span style="color:var(--text-secondary);">7 模块 · sim/ · ~80K 代码</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m1">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>文件</th><th>功能</th><th>核心指标</th><th>依赖</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">octonion_py.py</td><td>八元数 Fano 乘法表、Octonion 类、范数乘积</td><td>Fano 7 线、8 维</td><td>numpy</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">nasga_core.py</td><td>associator、commutator、Moufang 恒等式、ξ_c、δ</td><td>4 测试、500 对基准</td><td>octonion_py</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">fold_depth_py.py</td><td>δ 参数、A1 公理、δ_threshold、域分类</td><td>5 测试函数、δ ↔ ξ_c 对偶</td><td>octonion_py</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">spectral_laplacian_py.py</td><td>非结合 Laplacian 构建、谱分解、EML 图</td><td>4 测试、NetworkX 验证</td><td>numpy</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">tomas_sim.py</td><td>全量诊断、A6-BS v2.0、δ 集成</td><td>full/benchmark/measure 模式</td><td>全部 sim/</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">a6_bs_benchmark.py</td><td>五级基准：摆锤→Peano→牛顿→杨-米尔斯→自举</td><td>Cold-Start δ 集成</td><td>nasga_core, fold_depth</td></tr>
+            <tr><td style="color:var(--cyan);white-space:nowrap;">xi_c_measure.py</td><td>ξ_c 批量测量、CSV 导出</td><td>自定义样本数</td><td>nasga_core</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M2 Kernel Modules -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m2">
+      <span><strong style="color:var(--green);">M2</strong> Linux 内核模块 — <span style="color:var(--text-secondary);">10 模块 · kernel/ · ~244K 代码</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m2">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>文件</th><th>功能</th><th>接口</th></tr></thead>
+          <tbody>
+            <tr><td>T017</td><td style="color:var(--green);">tproc_core.c</td><td>T-Processor 主模块：δ 参数管理、ioctl</td><td>open/ioctl/release</td></tr>
+            <tr><td>T018</td><td style="color:var(--green);">octonion.c</td><td>八元数内核库：Fano 查表、associator</td><td>EXPORT_SYMBOL</td></tr>
+            <tr><td>T019</td><td style="color:var(--green);">spectral_laplacian.c</td><td>非结合 Laplacian、谱分解</td><td>内核 API</td></tr>
+            <tr><td>T020</td><td style="color:var(--green);">asym_residue.c</td><td>结合子残差、Moufang(3)、A1 对账</td><td>内核 API</td></tr>
+            <tr><td>T021</td><td style="color:var(--green);">kappa_reg.c</td><td>κ=7 稳态调节器：PID+前馈+I 抗饱和</td><td>6 ioctl</td></tr>
+            <tr><td>T022</td><td style="color:var(--green);">eml_map.c</td><td>EML 谱图内存映射：持久化、快照</td><td>mmap/ioctl</td></tr>
+            <tr><td>T023</td><td style="color:var(--green);">phi_gate.c</td><td>Φ-Gate 语义门控：八状态机、δ 联动</td><td>ioctl</td></tr>
+            <tr><td>T024</td><td style="color:var(--green);">delta_mem.c</td><td>δ-mem：L1-L2 融合、权重分配、压缩</td><td>ioctl</td></tr>
+            <tr><td>T025</td><td style="color:var(--green);">ci_gate.c</td><td>CI Gate：因果隔离、光锥校验</td><td>ioctl</td></tr>
+            <tr><td>T026</td><td style="color:var(--green);">st_auditor.c</td><td>ST Auditor：滑动窗口漂移检测</td><td>ioctl</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M3 USCS Filesystem -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m3">
+      <span><strong style="color:var(--purple);">M3</strong> USCS 文件系统 — <span style="color:var(--text-secondary);">4 模块 · kernel/uscsfs/ · ~70K 代码</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m3">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>文件</th><th>功能</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td>T027</td><td style="color:var(--purple);">super.c</td><td>超级块操作、挂载/卸载、CRC32、δ 持久化</td><td>mount/umount</td></tr>
+            <tr><td>T028</td><td style="color:var(--purple);">inode.c</td><td>谱页读写、δ 权重、EML 联动</td><td>read/write</td></tr>
+            <tr><td>T029</td><td style="color:var(--purple);">file.c</td><td>Continuation 模式读写、双分支协同</td><td>open/read/write</td></tr>
+            <tr><td>T030</td><td style="color:var(--purple);">mmap.c</td><td>δ 加权页映射、页故障处理</td><td>mmap/fault</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M4 CUDA GPU -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m4">
+      <span><strong style="color:var(--gold);">M4</strong> CUDA GPU 加速 — <span style="color:var(--text-secondary);">3 模块 · kernel/ · ~70K 代码</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m4">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>ID</th><th>文件</th><th>功能</th><th>加速比</th></tr></thead>
+          <tbody>
+            <tr><td>T031</td><td style="color:var(--gold);">cuda_octonion.cu</td><td>GPU 八元数乘法、并行 associator、批量 δ</td><td>~50x</td></tr>
+            <tr><td>T032</td><td style="color:var(--gold);">cuda_laplacian.cu</td><td>GPU Laplacian、CSR SpMV、Lanczos 特征值</td><td>~100x</td></tr>
+            <tr><td>T033</td><td style="color:var(--gold);">cuda_delta_mem.cu</td><td>GPU δ-mem 融合、residue 统计、压缩/解压</td><td>~30x</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M5 FPGA RTL -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m5">
+      <span><strong style="color:var(--red);">M5</strong> FPGA RTL — <span style="color:var(--text-secondary);">3 模块 · rtl/ · Verilog</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m5">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>文件</th><th>功能</th><th>目标平台</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--red);">octonion_mul.v</td><td>八元数乘法器：3 周期延迟、流水线满吞吐</td><td>Artix-7 XC7A100T</td></tr>
+            <tr><td style="color:var(--red);">delta_compute.v</td><td>δ 计算单元：5 周期、含域分类逻辑</td><td>Artix-7 XC7A100T</td></tr>
+            <tr><td style="color:var(--red);">spectral_engine.v</td><td>谱计算引擎：图 Laplacian 硬件加速</td><td>Artix-7 XC7A100T</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M6 Tools -->
+  <div class="collapsible">
+    <div class="collapse-header" onclick="toggleCollapse(this)" data-target="mod-m6">
+      <span><strong style="color:var(--cyan);">M6</strong> 用户态工具 + 其他 — <span style="color:var(--text-secondary);">6 模块 · tools/ + misc/</span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="mod-m6">
+      <div class="collapse-body-inner">
+        <div class="table-wrap"><table>
+          <thead><tr><th>文件</th><th>功能</th><th>用法</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--cyan);">uscsctl.py</td><td>USCS 管理 CLI：挂载/卸载/状态查询</td><td>python uscsctl.py --help</td></tr>
+            <tr><td style="color:var(--cyan);">tomas_bench.py</td><td>性能基准：CPU/GPU/FPGA 对比</td><td>python tomas_bench.py --trials 1000</td></tr>
+            <tr><td style="color:var(--cyan);">integrity_check.py</td><td>完整性自检：42/42 项验证</td><td>python integrity_check.py --verbose</td></tr>
+            <tr><td style="color:var(--text-muted);">ARCHITECTURE.md</td><td>系统架构文档</td><td>docs/</td></tr>
+            <tr><td style="color:var(--text-muted);">PRD.md</td><td>产品需求文档</td><td>docs/</td></tr>
+            <tr><td style="color:var(--text-muted);">diagnostic_report.json</td><td>诊断报告</td><td>项目根</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 5: Benchmarks / 性能基准
+     ============================================================ -->
+<section id="benchmarks" class="section">
+  <h2 class="section-title"><span class="num">05</span> 性能基准</h2>
+
+  <div class="chart-grid">
+    <div class="chart-wrap">
+      <h3 style="color:var(--cyan);margin-bottom:1rem;">每操作延迟对比 (μs)</h3>
+      <canvas id="chartLatency"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3 style="color:var(--cyan);margin-bottom:1rem;">加速比 (CPU = 1.0x)</h3>
+      <canvas id="chartSpeedup"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-wrap mt-2">
+    <h3 style="color:var(--cyan);margin-bottom:1rem;">吞吐量对比 (ops/sec)</h3>
+    <canvas id="chartThroughput"></canvas>
+  </div>
+
+  <div class="card mt-2">
+    <h3>📋 基准测试说明</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>操作</th><th>CPU (μs/op)</th><th>GPU 估算 (μs/op)</th><th>FPGA 估算 (μs/op)</th><th>CPU→GPU</th><th>CPU→FPGA</th></tr></thead>
+      <tbody>
+        <tr><td>八元数乘法</td><td>~2.5</td><td>~0.05</td><td>~0.015</td><td>~50x</td><td>~167x</td></tr>
+        <tr><td>associator 计算</td><td>~6.0</td><td>~0.075</td><td>~0.045</td><td>~80x</td><td>~133x</td></tr>
+        <tr><td>δ 计算</td><td>~8.0</td><td>~0.27</td><td>~0.025</td><td>~30x</td><td>~320x</td></tr>
+        <tr><td>非结合 Laplacian</td><td>~200</td><td>~2.0</td><td>~0.5</td><td>~100x</td><td>~400x</td></tr>
+      </tbody>
+    </table></div>
+    <p class="text-muted mt-2">GPU 估算基于 RTX 3080 (8704 CUDA Cores @ 1440 MHz)，FPGA 估算基于 Artix-7 XC7A100T (200 MHz)。实际性能需在对应硬件上验证。</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     Section 6: Integrity Report / 完整性报告
+     ============================================================ -->
+<section id="integrity" class="section">
+  <h2 class="section-title"><span class="num">06</span> 完整性报告</h2>
+
+  <div class="integrity-grid mb-2">
+    <div class="integrity-card pass">
+      <div class="number">42/42</div>
+      <div class="small">全部通过</div>
+      <div class="progress-bar mt-1"><div class="progress-fill" style="width:100%;"></div></div>
+    </div>
+    <div class="integrity-card pass">
+      <div class="number">23/23</div>
+      <div class="small">理论覆盖</div>
+      <div class="progress-bar mt-1"><div class="progress-fill" style="width:100%;"></div></div>
+    </div>
+    <div class="integrity-card pass">
+      <div class="number">6/6</div>
+      <div class="small">数学不变量</div>
+      <div class="progress-bar mt-1"><div class="progress-fill" style="width:100%;"></div></div>
+    </div>
+    <div class="integrity-card pass">
+      <div class="number">7/7</div>
+      <div class="small">交叉验证</div>
+      <div class="progress-bar mt-1"><div class="progress-fill" style="width:100%;"></div></div>
+    </div>
+  </div>
+
+  <div class="card-grid-2">
+    <div class="card">
+      <h3>🔬 理论覆盖 23/23</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>概念</th><th>文件</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>NASGA</td><td>sim/nasga_core.py</td><td class="pass">✓</td></tr>
+          <tr><td>δ 谱折叠深度</td><td>sim/fold_depth_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>八元数 Fano 平面</td><td>sim/octonion_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>A1 公理</td><td>sim/fold_depth_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>κ=7 稳态</td><td>kernel/kappa_reg.c</td><td class="pass">✓</td></tr>
+          <tr><td>Φ-Gate</td><td>kernel/phi_gate.c</td><td class="pass">✓</td></tr>
+          <tr><td>CI Gate</td><td>kernel/ci_gate.c</td><td class="pass">✓</td></tr>
+          <tr><td>… 全部 23 项</td><td></td><td class="pass">✓</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>📐 数学不变量 6/6</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>不变量</th><th>验证结果</th></tr></thead>
+        <tbody>
+          <tr><td>A1 公理（δ 守恒）</td><td class="pass">✓ 通过率 ≥70%</td></tr>
+          <tr><td>δ_threshold 条件</td><td class="pass">✓ 5/5 边界测试通过</td></tr>
+          <tr><td>δ 域分类</td><td class="pass">✓ 4/4 regime 测试通过</td></tr>
+          <tr><td>δ ↔ ξ_c 对偶</td><td class="pass">✓ 同数量级一致</td></tr>
+          <tr><td>Moufang 恒等式</td><td class="pass">✓ 全部满足</td></tr>
+          <tr><td>Fano 乘法表</td><td class="pass">✓ 无错误</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>🔗 交叉验证 7/7</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>接口对</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>octonion.c ↔ octonion_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>spectral_laplacian.c ↔ .py</td><td class="pass">✓</td></tr>
+          <tr><td>kappa_reg.c ↔ fold_depth_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>cuda_octonion.cu ↔ octonion.c</td><td class="pass">✓</td></tr>
+          <tr><td>octonion_mul.v ↔ octonion.c</td><td class="pass">✓</td></tr>
+          <tr><td>delta_compute.v ↔ fold_depth_py.py</td><td class="pass">✓</td></tr>
+          <tr><td>USCS 版本一致性</td><td class="pass">✓</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>📋 版本一致性 4/4</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>文件</th><th>v2.0 标记</th></tr></thead>
+        <tbody>
+          <tr><td>kernel/README.md</td><td class="pass">✓</td></tr>
+          <tr><td>kernel/tproc_core.c</td><td class="pass">✓</td></tr>
+          <tr><td>kernel/cuda_octonion.cu</td><td class="pass">✓</td></tr>
+          <tr><td>rtl/octonion_mul.v</td><td class="pass">✓</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="card mt-2 text-center">
+    <p style="font-size:1.5rem;font-weight:700;color:var(--green);">✅ 全部通过！TOMAS-AGI v2.0 完整性验证成功。</p>
+    <p class="text-muted">理论覆盖 23/23 · 数学不变量 6/6 · 交叉验证 7/7 · 版本一致性 4/4 · 核心指标 2/2</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>TOMAS-AGI v2.0 · 基于非结合谱图代数 (NASGA) 和谱折叠深度 δ 的具身通用人工智能系统</p>
+  <p>© 2026 复合体理学研究中心（TOMAS 项目组）· 章锋（章锋）· 李宗海</p>
+  <p class="mt-1">
+    <a href="docs/ARCHITECTURE.md" style="color:var(--cyan);">架构文档</a> ·
+    <a href="docs/PRD.md" style="color:var(--cyan);">PRD</a> ·
+    <a href="docs/USER_GUIDE.md" style="color:var(--cyan);">用户指南</a> ·
+    <a href="docs/paper.md" style="color:var(--cyan);">系统论文</a> ·
+    <a href="docs/NASGA标准模型涌现与可检验唯象学.pdf" style="color:var(--cyan);">标准模型涌现论文 (PDF)</a>
+  </p>
+</footer>
+
+</div><!-- /container -->
+
+<script>
+/* ============================================================
+   TOMAS-AGI v2.0 Dashboard — JavaScript
+   ============================================================ */
+
+// ── Navigation active state ──
+const navLinks = document.querySelectorAll('.nav a[data-section]');
+const sections = {};
+navLinks.forEach(a => {
+  const id = a.getAttribute('data-section');
+  const el = document.getElementById(id);
+  if (el) sections[id] = el;
+});
+
+function updateNav() {
+  let current = 'hero';
+  const scrollY = window.scrollY + 80;
+  for (const [id, el] of Object.entries(sections)) {
+    if (el.offsetTop <= scrollY) current = id;
+  }
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('data-section') === current);
+  });
+}
+window.addEventListener('scroll', updateNav, {passive:true});
+
+// Smooth scroll for nav links
+navLinks.forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.getElementById(a.getAttribute('data-section'));
+    if (target) target.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+});
+
+// ── Collapsible sections ──
+function toggleCollapse(header) {
+  const targetId = header.getAttribute('data-target');
+  const body = document.getElementById(targetId);
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.classList.remove('open');
+    header.classList.remove('open');
+  } else {
+    body.classList.add('open');
+    header.classList.add('open');
+  }
+}
+
+// ── Intersection Observer for animations ──
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.opacity = '1';
+      entry.target.style.transform = 'translateY(0)';
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.animate').forEach(el => observer.observe(el));
+
+// ── Charts ──
+function initCharts() {
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = '#1e2d3d';
+  Chart.defaults.font.family = "'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif";
+
+  const operations = ['八元数乘法', 'associator', 'δ 计算', '非结合 Laplacian'];
+
+  // Chart 1: Per-operation latency (log scale)
+  new Chart(document.getElementById('chartLatency'), {
+    type: 'bar',
+    data: {
+      labels: operations,
+      datasets: [
+        {
+          label: 'CPU',
+          data: [2.5, 6.0, 8.0, 200],
+          backgroundColor: 'rgba(6,182,212,0.6)',
+          borderColor: '#06b6d4',
+          borderWidth: 1,
+        },
+        {
+          label: 'GPU (估算)',
+          data: [0.05, 0.075, 0.27, 2.0],
+          backgroundColor: 'rgba(139,92,246,0.6)',
+          borderColor: '#8b5cf6',
+          borderWidth: 1,
+        },
+        {
+          label: 'FPGA (估算)',
+          data: [0.015, 0.045, 0.025, 0.5],
+          backgroundColor: 'rgba(245,158,11,0.6)',
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          type: 'logarithmic',
+          title: { display: true, text: 'μs (对数尺度)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+      plugins: {
+        legend: { labels: { usePointStyle: true } },
+      },
+    },
+  });
+
+  // Chart 2: Speedup
+  new Chart(document.getElementById('chartSpeedup'), {
+    type: 'bar',
+    data: {
+      labels: operations,
+      datasets: [
+        {
+          label: 'GPU 加速比',
+          data: [50, 80, 30, 100],
+          backgroundColor: 'rgba(139,92,246,0.6)',
+          borderColor: '#8b5cf6',
+          borderWidth: 1,
+        },
+        {
+          label: 'FPGA 加速比',
+          data: [167, 133, 320, 400],
+          backgroundColor: 'rgba(245,158,11,0.6)',
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          title: { display: true, text: '加速比 (x)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+      plugins: {
+        legend: { labels: { usePointStyle: true } },
+      },
+    },
+  });
+
+  // Chart 3: Throughput
+  const cpuOps = operations.map(o => {
+    const lat = { '八元数乘法': 2.5, 'associator': 6.0, 'δ 计算': 8.0, '非结合 Laplacian': 200 }[o];
+    return Math.round(1e6 / lat);
+  });
+  const gpuOps = operations.map(o => {
+    const lat = { '八元数乘法': 0.05, 'associator': 0.075, 'δ 计算': 0.27, '非结合 Laplacian': 2.0 }[o];
+    return Math.round(1e6 / lat);
+  });
+  const fpgaOps = operations.map(o => {
+    const lat = { '八元数乘法': 0.015, 'associator': 0.045, 'δ 计算': 0.025, '非结合 Laplacian': 0.5 }[o];
+    return Math.round(1e6 / lat);
+  });
+
+  new Chart(document.getElementById('chartThroughput'), {
+    type: 'bar',
+    data: {
+      labels: operations,
+      datasets: [
+        {
+          label: 'CPU',
+          data: cpuOps,
+          backgroundColor: 'rgba(6,182,212,0.6)',
+          borderColor: '#06b6d4',
+          borderWidth: 1,
+        },
+        {
+          label: 'GPU (估算)',
+          data: gpuOps,
+          backgroundColor: 'rgba(139,92,246,0.6)',
+          borderColor: '#8b5cf6',
+          borderWidth: 1,
+        },
+        {
+          label: 'FPGA (估算)',
+          data: fpgaOps,
+          backgroundColor: 'rgba(245,158,11,0.6)',
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          type: 'logarithmic',
+          title: { display: true, text: 'ops/sec (对数尺度)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+      plugins: {
+        legend: { labels: { usePointStyle: true } },
+      },
+    },
+  });
+}
+
+// Initialize charts when the benchmarks section is visible
+const benchSection = document.getElementById('benchmarks');
+let chartsInitialized = false;
+const chartObserver = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting && !chartsInitialized) {
+    chartsInitialized = true;
+    initCharts();
+  }
+}, { threshold: 0.1 });
+if (benchSection) chartObserver.observe(benchSection);
+
+// Also initialize on DOMContentLoaded if already visible
+document.addEventListener('DOMContentLoaded', () => {
+  const rect = benchSection?.getBoundingClientRect();
+  if (rect && rect.top < window.innerHeight && !chartsInitialized) {
+    chartsInitialized = true;
+    initCharts();
+  }
+});
+
+console.log('TOMAS-AGI v2.0 Dashboard loaded.');
+console.log('Modules: 33 | Code: 740K+ | Integrity: 42/42 PASS');
+console.log('NASGA · δ · κ=7 · Φ-Gate · CI Gate');
+</script>
+</body>
+</html>
