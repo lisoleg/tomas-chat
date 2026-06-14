@@ -4,7 +4,7 @@
 >
 > <sup>1</sup> 复合体理学研究中心（TOMAS 项目组）
 >
-> **版本**: v2.0 | **日期**: 2026-06-13
+> **版本**: v2.0 (V3) | **日期**: 2026-06-14
 
 ---
 
@@ -484,4 +484,6 @@ FPGA 在 δ 计算和非结合 Laplacian 两项上展现了卓越的加速比（
 >
 > **代码仓库**: `tomas_agi/` — 40 模块, ~800K 代码, 42/42 完整性
 >
-> © 2026 复合体理学研究中心（TOMAS 项目组）. All rights reserved.
+> **许可证**: Apache License 2.0 — 详见项目根目录 [LICENSE](../LICENSE) 文件
+>
+> © 2026 复合体理学研究中心（TOMAS 项目组）. Licensed under the Apache License, Version 2.0.

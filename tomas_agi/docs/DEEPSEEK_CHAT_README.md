@@ -1,6 +1,6 @@
 # DeepSeek Chat — EML 知识图谱混合推理前端
 
-> 版本：V3 | TOMAS-AGI 前端 | 2026-06-13
+> 版本：V3 | TOMAS-AGI 前端 | 2026-06-14 | Apache 2.0
 
 基于 Vite + React + TypeScript 构建，集成 EML 知识图谱路由 + DeepSeek LLM 的"翻译官 + 作家"混合推理架构。
 
