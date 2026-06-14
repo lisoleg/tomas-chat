@@ -145,7 +145,28 @@ cd /path/to/your/workspace
 # 项目已位于 tomas_agi/ 目录下
 ```
 
-### 3.2 快速验证（Python 仿真）
+### 3.2 数据库初始化
+
+TOMAS v2.0+ 使用 SQLite + SQLAlchemy 作为数据层。首次启动 API 服务器时会自动在 `D:/tomas-data/tomas.db` 创建 7 张表。也可手动初始化：
+
+```bash
+cd tomas_agi/sim
+
+# 方式 1：启动 API 服务器（自动建表）
+python server.py
+
+# 方式 2：手动执行建表脚本
+python -c "from models import get_engine; get_engine(); print('数据库已初始化: D:/tomas-data/tomas.db')"
+```
+
+**自定义数据库路径**：
+```bash
+# Windows PowerShell
+$env:TOMAS_DB_DIR = "E:/my-data"
+python server.py
+```
+
+### 3.3 快速验证（Python 仿真）
 
 ```bash
 cd tomas_agi/sim
@@ -178,7 +199,7 @@ python tomas_sim.py --mode measure -n 500
 总体: [6/6 通过]
 ```
 
-### 3.3 完整性自检
+### 3.4 完整性自检
 
 ```bash
 cd tomas_agi/tools
@@ -187,7 +208,7 @@ python integrity_check.py --verbose
 
 预期输出 42/42 项全部通过。
 
-### 3.4 性能基准
+### 3.5 性能基准
 
 ```bash
 cd tomas_agi/tools
@@ -493,6 +514,78 @@ npm install && npm run dev
 - **推理测试**：加载 EML → 输入查询 → 翻译官/作家自动路由
 - **图谱可视化**：D3.js 力导向图，节点=概念，边=关系
 - **φ-Gate 状态**：实时显示幻觉检测结果
+
+### 5.8 OwnThink 全量数据导入
+
+TOMAS 支持导入 OwnThink 中文知识图谱（140M+ 三元组）到 SQLite 数据库。
+
+```bash
+cd tomas_agi/sim
+
+# Step 1：确保数据库已初始化
+python -c "from models import get_engine; get_engine(); print('OK')"
+
+# Step 2：从 OwnThink CSV 导入（需要 CSV 文件在 D:/ownthink_v2/ownthink_v2.csv）
+#   --dry-run：试运行，仅统计行数
+#   --limit N：限制导入 N 行（用于测试）
+#   不加参数：全量导入 140M+ 行
+python import_ownthink_sqlite.py --dry-run
+python import_ownthink_sqlite.py --limit 100000      # 测试导入 10 万行
+python import_ownthink_sqlite.py                      # 全量导入
+
+# 也可以使用更快速的批量导入器
+python batch_import.py --input D:/ownthink_v2/ownthink_v2.csv
+
+# Step 3：验证导入
+python -c "
+from models import get_session, KnowledgeTriple
+s = get_session()
+print(f'三元组总数: {s.query(KnowledgeTriple).count():,}')
+s.close()
+"
+```
+
+**i_weight 自动计算**：导入时根据 subject 的出现频率自动计算 `i_weight = 1.0 + ln(1 + freq)/10.0`，范围 [1.0, ~3.0]。
+
+**伪概念过滤**：自动过滤日期、纯数字、URL 等伪概念，确保图谱质量。
+
+### 5.9 κ-Gate 语义剪枝参数
+
+κ-Gate 是 Token Bridge 的知识过滤机制，在 BFS 子图扩展时按 **信息存在度 I(X)** 剪枝低质量节点。
+
+```bash
+cd tomas_agi/sim
+
+# 默认（kappa=0）：不剪枝，全图 BFS
+python token_bridge.py --load ../data/physics_distilled.eml \
+    --concepts ../data/physics_distilled.concepts.json \
+    --query "牛顿定律"
+
+# 轻度剪枝（kappa=1.2）：过滤 I(X) < 1.2 的知识
+python token_bridge.py --load ../data/physics_distilled.eml \
+    --concepts ../data/physics_distilled.concepts.json \
+    --query "牛顿定律" --kappa 1.2
+
+# 深度剪枝（kappa=1.5）：仅保留高信息存在度知识
+python token_bridge.py --load ../data/physics_distilled.eml \
+    --concepts ../data/physics_distilled.concepts.json \
+    --query "牛顿定律" --kappa 1.5
+```
+
+**κ-Gate 效果**：
+- `kappa=0` → 全量子图（可能包含噪声）
+- `kappa=1.0~1.2` → 过滤低频/低质量知识
+- `kappa=1.5~2.0` → 高精度知识检索
+- 配合 `--llm` 作家模式使用时，κ-Gate 先过滤知识再注入 LLM 上下文
+
+**API 层 κ-Gate 过滤**：
+```bash
+# 按 i_weight 过滤三元组
+curl "http://localhost:5000/api/knowledge/triples?min_i_weight=1.5&limit=50"
+
+# 按 i_weight 过滤图谱（可选 subject 参数做 1-hop 子图展开）
+curl "http://localhost:5000/api/knowledge/graph?min_i_weight=1.2&subject=人工智能&limit=100"
+```
 
 ---
 
@@ -832,7 +925,59 @@ class EmlGraph(num_vertices: int)
 def compute_spectral_laplacian(graph: EmlGraph, alpha: float = 0.1) -> np.ndarray
 ```
 
-### 8.2 内核 ioctl 接口
+### 8.2 知识图谱 REST API（server.py）
+
+后端 API 服务器提供 SQLite 知识图谱的 CRUD 接口。
+
+**启动服务器**：
+```bash
+cd tomas_agi/sim
+python server.py
+# 默认监听 http://localhost:5000
+```
+
+**知识三元组 API**：
+
+| 端点 | 方法 | 说明 | 参数 |
+|------|------|------|------|
+| `/api/knowledge/triples` | GET | 查询三元组 | `subject`, `predicate`, `object`（部分匹配）, `min_i_weight`（κ-Gate 过滤）, `limit`, `offset` |
+| `/api/knowledge/subjects` | GET | 获取所有主体 | — |
+| `/api/knowledge/predicates` | GET | 获取所有谓词 | — |
+| `/api/knowledge/graph` | GET | 子图谱查询 | `subject`（1-hop 展开）, `min_i_weight`（κ-Gate 过滤）, `limit` |
+
+**min_i_weight 参数（κ-Gate 语义剪枝）**：
+- 类型：float，默认 0（不过滤）
+- 含义：仅返回 `i_weight >= min_i_weight` 的三元组
+- 范围建议：[1.0, 3.0]
+- 返回结果按 `i_weight DESC` 排序
+
+**示例请求**：
+```bash
+# 查询包含"牛顿"的三元组，仅保留高信息存在度的
+curl "http://localhost:5000/api/knowledge/triples?subject=牛顿&min_i_weight=1.5"
+
+# 查询"人工智能"的 1-hop 子图，κ=1.2
+curl "http://localhost:5000/api/knowledge/graph?subject=人工智能&min_i_weight=1.2&limit=100"
+
+# 获取所有谓词类型
+curl "http://localhost:5000/api/knowledge/predicates"
+```
+
+**响应格式**：
+```json
+{
+  "success": true,
+  "data": [
+    {"id": 1, "subject": "牛顿", "predicate": "发现", "object": "万有引力", "i_weight": 1.85},
+    {"id": 2, "subject": "牛顿", "predicate": "提出", "object": "三大运动定律", "i_weight": 1.92}
+  ],
+  "total": 2,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+### 8.3 内核 ioctl 接口
 
 #### T-Processor (tproc_core.c)
 
