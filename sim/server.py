@@ -83,10 +83,29 @@ def init_db():
             concept TEXT NOT NULL,
             content TEXT,
             source TEXT,
+            type TEXT DEFAULT 'concept',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
+    # 迁移：为旧表添加 type 列（如果不存在）
+    try:
+        cursor.execute('ALTER TABLE knowledge_items ADD COLUMN type TEXT DEFAULT \'concept\'')
+    except:
+        pass  # 列已存在
+
+    # 知识三元组表（用于图谱可视化）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS knowledge_triples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            object TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_triples_subject ON knowledge_triples(subject)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_triples_object ON knowledge_triples(object)')
+
     conn.commit()
     conn.close()
 
@@ -286,7 +305,7 @@ def save_api_key():
 
 @app.route('/api/knowledge', methods=['GET'])
 def get_knowledge():
-    """获取所有知识条目"""
+    """获取所有知识条目（返回前端 KnowledgeItem 格式）"""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM knowledge_items')
@@ -295,35 +314,74 @@ def get_knowledge():
     
     items = []
     for row in rows:
+        # 将后端字段映射为前端 KnowledgeItem 格式
+        created_at_str = row['created_at']
+        # 尝试解析为时间戳（毫秒），否则保持字符串
+        try:
+            if created_at_str:
+                dt = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
+                created_at_ts = int(dt.timestamp() * 1000)
+            else:
+                created_at_ts = 0
+        except (ValueError, TypeError):
+            created_at_ts = 0
+        
         items.append({
             'id': row['id'],
-            'concept': row['concept'],
-            'content': row['content'],
-            'source': row['source']
+            'type': row['type'] if row['type'] else 'concept',
+            'label': row['concept'],
+            'extra': row['content'] if row['content'] else '',
+            'domain': row['source'] if row['source'] else '',
+            'createdAt': created_at_ts
         })
     
     return jsonify({'success': True, 'data': items})
 
 @app.route('/api/knowledge', methods=['POST'])
 def add_knowledge():
-    """批量添加知识条目"""
+    """批量添加知识条目（同时为关系生成三元组）"""
     items = request.json  # 期望是数组
     conn = get_db()
     cursor = conn.cursor()
     
     ids = []
+    triple_count = 0
     for item in items:
+        item_type = item.get('type', 'concept')
+        label = item.get('label', '')
+        extra = item.get('extra', '')
+        domain = item.get('domain', '')
+        created_at = item.get('createdAt', None)
+        # 兼容毫秒时间戳 → SQLite datetime
+        if created_at and isinstance(created_at, (int, float)):
+            created_at = datetime.fromtimestamp(created_at / 1000).strftime('%Y-%m-%d %H:%M:%S')
+        
         # 映射字段：label -> concept, extra -> content, domain -> source
         cursor.execute('''
-            INSERT INTO knowledge_items (concept, content, source)
-            VALUES (?, ?, ?)
-        ''', (item.get('label', ''), item.get('extra', ''), item.get('domain', '')))
-        ids.append(cursor.lastrowid)
+            INSERT INTO knowledge_items (concept, content, source, type, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (label, extra, domain, item_type, created_at))
+        item_id = cursor.lastrowid
+        ids.append(item_id)
+        
+        # 如果是关系条目，额外写入三元组表（用于图谱可视化）
+        if item_type == 'relation':
+            # label 格式为 "src → dst"，extra 是关系类型
+            arrow_idx = label.find(' → ')
+            if arrow_idx > 0:
+                src = label[:arrow_idx].strip()
+                dst = label[arrow_idx + 3:].strip()
+                predicate = extra if extra else 'related_to'
+                cursor.execute('''
+                    INSERT OR IGNORE INTO knowledge_triples (subject, predicate, object, created_at)
+                    VALUES (?, ?, ?, ?)
+                ''', (src, predicate, dst, created_at))
+                triple_count += 1
     
     conn.commit()
     conn.close()
     
-    return jsonify({'success': True, 'ids': ids})
+    return jsonify({'success': True, 'ids': ids, 'triples_added': triple_count})
 
 @app.route('/api/knowledge/<int:item_id>', methods=['DELETE'])
 def delete_knowledge(item_id):

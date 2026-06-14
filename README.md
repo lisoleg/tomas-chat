@@ -217,7 +217,7 @@ const CONFIDENCE_THRESHOLD = 0.5
 
 ## 📄 License
 
-MIT License
+Apache License 2.0 — see [LICENSE](./LICENSE) for details.
 
 ---
 

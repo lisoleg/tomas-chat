@@ -65,15 +65,17 @@ import re as _re
 _DATE_PATTERNS = [
     _re.compile(r'^\d{4}年\d{1,2}月\d{1,2}日?$'),           # 1543年5月24日
     _re.compile(r'^\d{4}年\d{1,2}月$'),                       # 1543年5月
+    _re.compile(r'^\d{4}$'),                                   # 纯四位数字（疑似年份：1543, 2024）
     _re.compile(r'^\d{4}年$'),                                 # 1543年 / 2024年
     _re.compile(r'^公元前\d+年'),                               # 公元前221年
     _re.compile(r'^公元\d+年'),                                 # 公元2024年
     _re.compile(r'^\d{1,2}世纪(\d{1,2})?年代?$'),            # 19世纪 / 20世纪50年代
     _re.compile(r'^[春夏秋冬]季$'),                             # 春季/夏季
-    _re.compile(r'^\d{1,2}[月日号]$'),                        # 5月24日 / 24日
+    _re.compile(r'^\d{1,2}[月日号]\d{1,2}[日号]?$'),          # 5月24日 / 24日
     _re.compile(r'^(?:周|星期)[一二三四五六日天]$'),             # 星期一
     _re.compile(r'^\d{4}-\d{2}-\d{2}$'),                      # 2024-05-24
     _re.compile(r'^\d{2}:\d{2}(:\d{2})?$'),                   # 14:30 / 14:30:00
+    _re.compile(r'^\d{4}年?\d*[-–—～~]\d{4}年?\d*'),           # 1473-1543（生卒/日期范围）
 ]
 
 # 纯数字或数量表达式
@@ -106,6 +108,15 @@ def is_pseudo_concept(concept: str) -> Tuple[bool, str]:
     for p in _DATE_PATTERNS:
         if p.match(s):
             return True, f"日期/时间格式"
+
+    # 纯四位数字且在年份范围内（1000~2100）→ 疑似孤立年份
+    if _re.match(r'^\d{4}$', s):
+        try:
+            y = int(s)
+            if 1000 <= y <= 2100:
+                return True, "疑似年份"
+        except ValueError:
+            pass
 
     # 纯数字/数量检查
     for p in _NUMBER_PATTERNS:
@@ -221,34 +232,36 @@ class DeepSeekClient:
                         pass
     
     def extract_concepts(self, text: str, max_concepts: int = 100) -> List[Dict]:
-        """从文本中提取关键概念（严格过滤伪概念）"""
-        # 限制实际请求的概念数，避免 JSON 被截断
+        """从文本中提取关键概念（严格过滤伪概念）—— 参考 OwnThink 实体-属性模型"""
         request_count = min(max_concepts, 30)
-        prompt = f"""请从以下文本中提取 {request_count} 个核心概念实体。
+        prompt = f"""你是一个知识图谱实体提取专家。参考 OwnThink 知识图谱模型
+（实体 → 属性 → 值），请从以下文本中提取最多 {request_count} 个**知识实体**。
 
-⚠️ 严格排除规则（以下内容绝对不能返回）：
-- ❌ 日期/时间：如"1543年5月24日"、"2024年"、"公元前221年"、"19世纪"
-- ❌ 纯数字/数量：如"2500万"、"1.4亿"、"3.14159"
-- ❌ 度量单位值：如"100公里"、"37℃"、"500克"
-- ❌ 人名生卒日期、事件发生时间等时间属性值
-- ❌ 版本号/编号：如"v2.0"、"第3版"
-- ❌ URL/邮箱/电话号码
-- ❌ 单个汉字或无意义的短词（<2个字符且非专有名词）
+## 什么是知识实体？
+知识实体是你可以为之写出有意义定义的事物。如果你只能用"一个日期"、"一个数字"、
+"一个度量值"来描述它——那它就不是知识实体，不要返回。
 
-✅ 只返回真正的概念实体：
-- 学科概念：人工智能、量子力学、相对论
-- 人物/组织：哥白尼、中国科学院
-- 物体/现象：黑洞、DNA双螺旋
-- 理论/方法：进化论、归纳法
-- 地理/历史实体：丝绸之路、文艺复兴
+## ✅ 正确示例
+{{"entity": "哥白尼", "description": "文艺复兴时期波兰天文学家，提出日心说理论，颠覆了地心说宇宙观", "tags": ["人物", "天文学"], "importance": 0.95}}
+{{"entity": "日心说", "description": "认为太阳是宇宙中心、行星绕太阳运行的天文学理论", "tags": ["天文学", "科学理论"], "importance": 0.90}}
+{{"entity": "文艺复兴", "description": "14-17世纪欧洲的思想文化运动，推动了科学和艺术的蓬勃发展", "tags": ["历史", "文化运动"], "importance": 0.85}}
 
-要求：
-1. 每个概念应该是文本中的核心实体（名词性）
-2. 给出每个概念的重要性评分（0.0~1.0）
-3. 给出概念的简要描述（一句话）
+## ❌ 错误示例：绝对不能返回
+{{"entity": "1473年2月19日", "description": "哥白尼的出生日期"}}  — entity 本身是日期值，不是实体！
+{{"entity": "1543年5月24日", "description": "哥白尼去世日期"}}    — entity 本身是日期值，不是实体！
+{{"entity": "1473—1543", "description": "哥白尼的生卒年份"}}    — 日期范围，不是实体！
+{{"entity": "1543", "description": "一个年份"}}                  — 纯数字，不是实体！
+{{"entity": "100公里", "description": "一个距离"}}               — 度量值，不是实体！
+
+## 要求
+1. entity: 知识实体名称（2-20字，名词性，不能是日期/数字/度量）
+2. description: 一句话定义（至少8个汉字，不能是"一个XX"的空洞描述）
+3. tags: 1-3个分类标签（如"人物""科学""历史"等）
+4. importance: 0.0~1.0 重要性评分
+5. ⚠️ **核心原则：写不出有意义的定义 → 就不要返回**
 
 以纯 JSON 数组返回，不要 markdown 代码块：
-[{{"concept": "概念名", "importance": 0.8, "context": "描述"}}, ...]
+[{{"entity": "...", "description": "...", "tags": ["标签1"], "importance": 0.8}}, ...]
 
 文本：
 {text[:3000]}
@@ -257,20 +270,60 @@ class DeepSeekClient:
         try:
             response = self.chat(messages, temperature=0.3, max_tokens=4096)
             # 提取 JSON：先尝试去掉 ```json ... ``` 包裹
-            import re
             response = response.strip()
             if response.startswith('```'):
-                response = re.sub(r'^```(?:json)?\s*\n?', '', response)
-                response = re.sub(r'\n?```\s*$', '', response)
+                response = _re.sub(r'^```(?:json)?\s*\n?', '', response)
+                response = _re.sub(r'\n?```\s*$', '', response)
             # 找到第一个完整 JSON 数组
             bracket_start = response.find('[')
             if bracket_start == -1:
                 raise ValueError("未找到 JSON 数组")
-            concepts = json.loads(response[bracket_start:])
+            raw_concepts = json.loads(response[bracket_start:])
+
+            # 后置校验：描述空洞的伪实体 → 直接丢弃
+            TRIVIAL_DESC_PATTERNS = [
+                _re.compile(r'^一个(日期|时间|数字|数量|年份|世纪|度量|单位|版本|编号|季度|月份|距离|重量|长度|温度|速度|数值)$'),
+                _re.compile(r'^(同上|见上|类似)$'),
+                _re.compile(r'^.{1,4}$'),
+            ]
+
+            concepts = []
+            pseudo_count = 0
+            for raw in raw_concepts:
+                if not isinstance(raw, dict):
+                    continue
+                # 兼容新旧两种 LLM 输出格式
+                entity = str(raw.get('entity', raw.get('concept', ''))).strip()
+                if not entity or len(entity) < 2:
+                    continue
+
+                description = str(raw.get('description', raw.get('context', ''))).strip()
+
+                # describe-or-discard
+                is_trivial = any(p.match(description) for p in TRIVIAL_DESC_PATTERNS)
+                if is_trivial or description == entity or description.replace(' ', '') == entity:
+                    pseudo_count += 1
+                    continue
+
+                importance = float(raw.get('importance', 0.5))
+                tags = raw.get('tags', [])
+                tag_str = '、'.join(tags) if isinstance(tags, list) else ''
+                context = f"{description} [{tag_str}]" if tag_str else description
+
+                concepts.append({
+                    'concept': entity,
+                    'importance': importance,
+                    'context': context
+                })
+
+            if pseudo_count > 0:
+                print(f"  🗑 丢弃 {pseudo_count} 个伪实体（描述空洞）")
+            print(f"  保留 {len(concepts)} 个有效实体")
             return concepts[:max_concepts]
+
         except Exception as e:
             print(f"概念提取失败：{e}")
-            print(f"  API 返回前200字：{response[:200] if isinstance(response, str) else 'N/A'}")
+            print(f"  API 返回前200字：{response[:200] if 'response' in dir() else 'N/A'}")
             return []
     
     def extract_relations(self, concepts: List[Dict], text: str,
