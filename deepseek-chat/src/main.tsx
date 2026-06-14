@@ -5,16 +5,23 @@ import App from './App'
 import './index.css'
 import 'highlight.js/styles/github-dark.css'
 
-// 注册 Service Worker（支持离线访问）
+// Service Worker 已禁用（避免缓存旧 API 数据导致显示脏数据）
+// 如果之前注册过，自动卸载 + 清空 Cache Storage
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered: ', registration)
-      })
-      .catch((error) => {
-        console.log('SW registration failed: ', error)
-      })
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    for (const reg of regs) {
+      reg.unregister()
+      console.log('[SW] 已卸载旧 Service Worker')
+    }
+  })
+}
+// 清空所有缓存（防止旧 API 响应被缓存导致显示脏数据）
+if ('caches' in window) {
+  caches.keys().then(names => {
+    for (const name of names) {
+      caches.delete(name)
+      console.log('[Cache] 已删除缓存:', name)
+    }
   })
 }
 

@@ -72,88 +72,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 启动时自动加载 public/ 下所有已有 EML 文件 + 概念名 JSON，默认进入 EML 路由模式
-  useEffect(() => {
-    const emlPaths = [
-      '/ownthink_sample.eml'
-    ]
-
-    async function autoLoadAll() {
-      const graphs: EMLGraphData[] = []
-      const allConceptNames = new Map<number, string>()
-      const conceptJsonDataList: Array<{ data: any; idOffset: number }> = []
-      let idOffset = 0
-
-      for (const path of emlPaths) {
-        try {
-          // 拉取 EML 二进制
-          const resp = await fetch(path)
-          if (!resp.ok) continue
-          const buffer = await resp.arrayBuffer()
-          const graph = loadEMLFromBuffer(buffer)
-          graphs.push(graph)
-
-          // 拉取对应的概念名 JSON（EML 二进制不存文本）
-          const jsonPath = path.replace('.eml', '.concepts.json')
-          try {
-            const jsonResp = await fetch(jsonPath)
-            if (jsonResp.ok) {
-              const data = await jsonResp.json()
-              for (const c of data.concepts) {
-                allConceptNames.set(c.id + idOffset, c.concept)
-              }
-              // 收集 JSON data（含 domain 字段），供后续设置 corpusName
-              conceptJsonDataList.push({ data, idOffset })
-            }
-          } catch {
-            // 概念名文件不存在则跳过
-          }
-
-          idOffset += graph.vertices.length
-        } catch {
-          // 个别文件不存在或损坏则跳过
-        }
-      }
-
-      if (graphs.length === 0) return
-
-      const merged = mergeEMLGraphs(graphs)
-      bridgeClient.current.loadEML(merged)
-      // 注入真实概念名（替换 concept_0 等占位符）
-      if (allConceptNames.size > 0) {
-        bridgeClient.current.loadConceptNames(allConceptNames)
-      }
-
-      // 同时设置 corpusName（领域标签，来自 concepts.json 的 domain 字段）
-      for (const { data, idOffset } of conceptJsonDataList) {
-        const adjustedData = {
-          ...data,
-          concepts: data.concepts.map((c: any) => ({
-            ...c,
-            id: c.id + idOffset,
-          })),
-        }
-        bridgeClient.current.loadConceptNamesFromJson(adjustedData)
-      }
-      
-      const avgDelta = merged.vertices.length > 0
-        ? merged.vertices.reduce((s, v) => s + v.delta, 0) / merged.vertices.length
-        : 0
-
-      setEmlState({
-        loaded: true,
-        fileName: `合并知识库 (${graphs.length} 个 EML)`,
-        fileSize: 0,  // 合并后不单独记录大小
-        vertexCount: merged.vertices.length,
-        edgeCount: merged.edges.length,
-        avgDelta
-      })
-      setBridgeKey((k) => k + 1)
-    }
-
-    autoLoadAll()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ── 已禁用：启动时不再自动加载 public/ 下的 EML 文件 ──
+  // 数据已迁移至 SQLite 后端 API，由 DistillPanel 按需加载
+  // 如需恢复本地 EML 自动加载，取消下方注释即可
+  //
+  // useEffect(() => {
+  //   const emlPaths = [
+  //     '/ownthink_sample.eml'
+  //   ]
+  //   ... 原有自动加载逻辑 ...
+  // }, [])
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-chatBg text-textPrimary flex">

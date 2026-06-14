@@ -33,6 +33,12 @@ self.addEventListener('activate', (event) => {
 
 // 网络优先 + 缓存回退策略
 self.addEventListener('fetch', (event) => {
+  // 只处理 http/https 协议的请求（过滤掉 chrome-extension、moz-extension 等）
+  const url = new URL(event.request.url)
+  if (!url.protocol.startsWith('http')) {
+    return
+  }
+
   // API 请求：网络优先
   if (event.request.url.includes('/api/')) {
     event.respondWith(

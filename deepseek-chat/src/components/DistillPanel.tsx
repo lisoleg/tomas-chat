@@ -1,4 +1,3 @@
-// @ts-nocheck
 // 蒸馏模式面板：让用户在浏览器中直接使用 LLM 蒸馏器
 // 包含文本输入、概念/关系提取、EML 图构建与下载、Token Bridge 推理
 
@@ -22,6 +21,7 @@ import type { MergeSummary } from '../api/distiller'
 import { getAllKnowledgeItems, saveKnowledgeItems, type KnowledgeItem } from '../api/knowledgeStore'
 import { deleteCorpusEntry, getAllCorpusEntries, saveCorpusEntry, saveConflictDecision, type CorpusEntry, type ConflictDecision } from '../api/corpusStore'
 import { EMLGraphVisualization } from './EMLGraphVisualization'
+import { useToast } from './Toast'
 
 interface DistillPanelProps {
   /** DeepSeek API Key */
@@ -206,26 +206,78 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
   // 数据加载状态
   const [dataLoading, setDataLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
+  const { toastSuccess, toastError, toastWarning, toastInfo } = useToast()
   
   // 加载知识条目和语料条目
   useEffect(() => {
     async function loadData() {
+      console.log('[DistillPanel] === 开始加载数据 (2024-06-14 v2) ===')
       try {
         setDataLoading(true)
         setDataError(null)
-        
+
         const items = await getAllKnowledgeItems()
         setKnowledgeItems(items)
-        
+
         const entries = await getAllCorpusEntries()
         setCorpusEntries(entries)
-        
+
+        // ── 同时加载图谱数据（从后端三元组构建）──
+        // 这样用户点击"知识浏览"中的概念时就能直接显示邻域子图
+        try {
+          const graphRes = await fetch('http://localhost:5000/api/knowledge/graph?limit=5000')
+          console.log('[DistillPanel] 图谱API状态:', graphRes.status, graphRes.ok)
+          if (graphRes.ok) {
+            const graphJson = await graphRes.json()
+            console.log('[DistillPanel] 图谱API返回:', JSON.stringify(graphJson).slice(0, 300))
+            if (graphJson.success && graphJson.triples.length > 0) {
+              const conceptSet = new Set(graphJson.concepts)
+              // 确保 triples 中的 subject/object 都在 concept 集合中
+              for (const t of graphJson.triples) {
+                conceptSet.add(t.subject)
+                if (t.object && !/^\d+(\.\d+)?$/.test(t.object) && t.object.length < 100) {
+                  conceptSet.add(t.object)
+                }
+              }
+              const conceptList = Array.from(conceptSet)
+              const nameToId = new Map<string, number>()
+              conceptList.forEach((name, i) => nameToId.set(name, i))
+
+              const vertices = conceptList.map((name, i) => ({
+                id: i,
+                label: name,
+                delta: Math.random() * 0.3 + 0.05,  // 后端暂无 delta，用小随机值占位
+                info_existence: 0.5,
+                corpusName: null
+              }))
+
+              const edges = graphJson.triples
+                .filter(t => nameToId.has(t.subject) && nameToId.has(t.object))
+                .map(t => ({
+                  src: nameToId.get(t.subject)!,
+                  dst: nameToId.get(t.object)!,
+                  weight: 0.3 + Math.random() * 0.4,  // 后端暂无权重，随机生成
+                  associator_flag: 0
+                }))
+
+              setGraphData({ vertices, edges })
+              // 标记图谱来自 API（非 EML 文件），默认全量显示
+              setGraphFromAPI(true)
+              console.log(`[DistillPanel] 图谱已加载: ${vertices.length} 顶点, ${edges.length} 边`)
+            } else {
+              console.log('[DistillPanel] 图谱数据为空（triples=0 或 success=false），graphData 保持 null')
+            }
+          }
+        } catch (graphErr) {
+          // 图谱加载失败不影响主功能（知识列表仍可用）
+          console.warn('[DistillPanel] 图谱数据加载失败（非致命）:', graphErr)
+        }
+
       } catch (err) {
         const message = err instanceof Error ? err.message : '加载数据失败'
         setDataError(message)
         console.error('加载数据失败:', err)
-        // 显示用户友好的错误提示
-        alert(`⚠️ 加载数据失败\n\n${message}\n\n请检查后端服务器是否启动（应运行在 http://localhost:5000）`)
+        toastError(`加载数据失败：${message}，请检查后端服务器（http://localhost:5000）`)
       } finally {
         setDataLoading(false)
       }
@@ -257,6 +309,8 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
     vertices: Array<{ id: number; label: string; delta: number; info_existence: number; corpusName?: string }>
     edges: Array<{ src: number; dst: number; weight: number; associator_flag: number }>
   } | null>(null)
+  // 图谱数据是否来自后端 API（非 EML 上传），用于决定是否默认全量显示
+  const [graphFromAPI, setGraphFromAPI] = useState(false)
   const bridgeClient = useRef(new TokenBridgeClient())
   const knowledgeListRef = useRef<HTMLDivElement>(null)
 
@@ -325,6 +379,7 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
             associator_flag: e.associatorFlag
           }))
         })
+        setGraphFromAPI(false)
         setSyncedFromExternal(true)
 
         // 外部同步成功后，清空旧的 localStorage 知识/语料数据（避免与外部数据混在一起）
@@ -523,9 +578,10 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
         })
       }
       setGraphData(vizGraph)
+      setGraphFromAPI(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : '加载失败'
-      alert(`加载 EML 文件失败：${message}`)
+      toastError(`加载 EML 文件失败：${message}`)
     }
   }, [concepts])
 
@@ -567,9 +623,10 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
         })
       }
       setGraphData(vizGraph)
+      setGraphFromAPI(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : '加载失败'
-      alert(`加载失败：${message}`)
+      toastError(`加载失败：${message}`)
     }
   }, [emlBuffer, concepts])
 
@@ -645,7 +702,7 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
 
       setMergeSummary(null)
     } catch (err) {
-      alert(`合并失败：${err instanceof Error ? err.message : '未知错误'}`)
+      toastError(`合并失败：${err instanceof Error ? err.message : '未知错误'}`)
     } finally {
       setMerging(false)
     }
@@ -1565,10 +1622,12 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
                     <EMLGraphVisualization
                       graphData={graphData}
                       height={Math.max(Math.floor(window.innerHeight * 0.72), 600)}
-                      selectedCorpus={selectedCorpusName}
+                      // API 数据无语料标记，不传语料过滤（避免"缺少语料标记"警告）
+                      selectedCorpus={graphFromAPI ? null : selectedCorpusName}
                       selectedKnowledgeId={selectedKnowledgeId}
                       edgeWeightThreshold={edgeWeightThreshold}
                       onEdgeWeightThresholdChange={setEdgeWeightThreshold}
+                      showAllByDefault={graphFromAPI}
                     />
                   </div>
                 )}
@@ -1610,7 +1669,7 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
                           // 保留已有的 corpusName 标记
                         })
                       }
-                      if (vizGraph) setGraphData(vizGraph)
+                      if (vizGraph) { setGraphData(vizGraph); setGraphFromAPI(false) }
                     }}
                     onSelectConcept={(vertexId) => {
                       setSelectedKnowledgeId(vertexId)
@@ -1813,7 +1872,7 @@ function KnowledgeBrowser({
       )
       onGraphUpdated(newGraph)
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : '未知错误'}`)
+      toastError(`删除失败：${err instanceof Error ? err.message : '未知错误'}`)
     } finally {
       setDeleting(false)
     }
@@ -1833,7 +1892,7 @@ function KnowledgeBrowser({
       )
       onGraphUpdated(newGraph)
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : '未知错误'}`)
+      toastError(`删除失败：${err instanceof Error ? err.message : '未知错误'}`)
     } finally {
       setDeleting(false)
     }

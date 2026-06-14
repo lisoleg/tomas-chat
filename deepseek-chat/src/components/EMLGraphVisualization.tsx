@@ -34,6 +34,8 @@ interface EMLGraphVisualizationProps {
   onEdgeWeightThresholdChange?: (threshold: number) => void
   /** 当前选中的关系 key（格式 "src-dst"），显示该关系两端节点的联合邻域并高亮此边 */
   selectedRelationKey?: string | null
+  /** 当没有选中任何项目时是否默认全量显示（用于从 API 加载的数据） */
+  showAllByDefault?: boolean
 }
 
 /**
@@ -54,6 +56,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
   selectedNodeId = null,
   edgeWeightThreshold = 0.2,
   onEdgeWeightThresholdChange,
+  showAllByDefault = false,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -139,18 +142,17 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
 
     // 第三：选中了语料 → 只显示该语料的节点+边
     if (selectedCorpus) {
+      // 检查是否有任何顶点带有 corpusName（API 数据可能全部为 null）
+      const hasAnyCorpusName = graphData.vertices.some(v => v.corpusName)
+      if (!hasAnyCorpusName) {
+        // API 数据无语料标记 → 忽略语料过滤，直接全量显示（不报错）
+        setFilterWarning(null)
+        return { vertices: graphData.vertices, edges: graphData.edges }
+      }
       const corpusVertexIds = new Set(
         graphData.vertices.filter(v => v.corpusName === selectedCorpus).map(v => v.id)
       )
       if (corpusVertexIds.size === 0) {
-        // 降级：没有匹配的 corpusName（可能是从外部加载的数据）
-        // 检查是否所有顶点都缺少 corpusName
-        const hasAnyCorpusName = graphData.vertices.some(v => v.corpusName)
-        if (!hasAnyCorpusName) {
-          // 所有顶点都没有语料标记 → 返回全部数据并提示
-          setFilterWarning(`当前图谱数据缺少语料标记，显示全部 ${graphData.vertices.length} 个概念`)
-          return { vertices: graphData.vertices, edges: graphData.edges }
-        }
         // 有语料标记但当前选中的不匹配 → 返回 null
         setFilterWarning(null)
         return null
@@ -162,10 +164,14 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       }
     }
 
-    // 都没选中 → 返回 null（显示空状态提示）
+    // 都没选中 → 通常返回 null（显示空状态提示）
+    // 但如果 showAllByDefault=true（数据来自 API），则全量显示
     setFilterWarning(null)
+    if (showAllByDefault) {
+      return { vertices: graphData.vertices, edges: graphData.edges }
+    }
     return null
-  }, [graphData, selectedCorpus, selectedKnowledgeId, selectedRelationKey])
+  }, [graphData, selectedCorpus, selectedKnowledgeId, selectedRelationKey, showAllByDefault])
 
   // 可见边数统计（用于滑块旁的计数）
   const visibleEdgeCount = useMemo(() => {
@@ -218,7 +224,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
     // 标签高亮
     svg.selectAll<SVGTextElement, any>('.labels text')
       .style('opacity', (d: any) => {
-        if (!q) return filteredData.vertices.length <= 25 ? 1 : 0
+        if (!q) return filteredData.vertices.length <= 60 ? 1 : 0
         return matchingIds.has(d.id) ? 1 : 0
       })
 
@@ -249,11 +255,12 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
     // 节点/边计数（提前声明，后续多处引用）
     const nodeCount = vertices.length
     const linkCount = filteredEdges.length
-    // 大图时大幅缩小节点半径，避免过度拥挤
+    // 大图时缩小节点半径，但保证最小可读性
     const isLargeGraph = nodeCount > 80
     const isMediumGraph = nodeCount > 40
-    const baseRadius = isLargeGraph ? 8 : (isMediumGraph ? 12 : 14)
-    const deltaScale = isLargeGraph ? 18 : (isMediumGraph ? 28 : 35)
+    // 大幅提高节点基础半径，确保文字可读
+    const baseRadius = isLargeGraph ? 14 : (isMediumGraph ? 16 : 18)
+    const deltaScale = isLargeGraph ? 20 : (isMediumGraph ? 30 : 38)
     const nodes = vertices.map(v => ({
       id: v.id,
       label: v.label,
@@ -287,9 +294,9 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
           .attr('stroke-width', (d: any) => d.id === selectedNodeId ? 3 : 1.5)
         svg.selectAll<SVGLineElement, any>('.links line')
           .attr('stroke-opacity', edgeOpacity)
-          .attr('stroke-width', (e: any) => 0.3 + e.weight * (isLargeGraph ? 1.5 : 2.5))
+          .attr('stroke-width', (e: any) => 0.5 + e.weight * (isLargeGraph ? 2.2 : 3.0))
         svg.selectAll<SVGTextElement, any>('.labels text')
-          .style('opacity', vertices.length <= 25 ? 1 : 0)
+          .style('opacity', vertices.length <= 60 ? 1 : 0)
         svg.selectAll<SVGTextElement, any>('.hover-labels text').style('opacity', 0)
         setSearchQuery('')
       })
@@ -308,7 +315,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
     svg.call(zoom)
     svg.call(zoom.transform, d3.zoomIdentity
       .scale(defaultScale)
-      .translate(cw / 2 * (1 - 1 / defaultScale) * defaultScale, ch / 2 * (1 - 1 / defaultScale) * defaultScale))
+      .translate(cw * (1 - defaultScale) / 2, ch * (1 - defaultScale) / 2))
 
     // 力模拟 —— 根据节点数量动态调整参数（三级优化）
     // 三级优化：小图(<40)、中图(40-80)、大图(>80)
@@ -348,8 +355,9 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
 
     simulationRef.current = simulation
 
-    // 绘制边 —— 边多时大幅降低透明度减少视觉干扰（三级）
-    const edgeOpacity = linkCount > 200 ? 0.06 : (linkCount > 80 ? 0.1 : (linkCount > 50 ? 0.15 : (linkCount > 20 ? 0.25 : 0.4)))
+    // 绘制边 —— 大幅提升可见性：提高透明度底线 + 加宽线
+    const edgeOpacity = linkCount > 300 ? 0.12 : (linkCount > 150 ? 0.18 : (linkCount > 80 ? 0.28 : (linkCount > 40 ? 0.38 : 0.5)))
+    const edgeWidthScale = isLargeGraph ? 2.2 : 3.0
     const link = g.append('g').attr('class', 'links')
       .selectAll('line')
       .data(links)
@@ -357,7 +365,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .append('line')
       .attr('stroke', (d: any) => getEdgeColor(d.associator_flag ?? 0))
       .attr('stroke-opacity', edgeOpacity)
-      .attr('stroke-width', (d: any) => 0.3 + d.weight * (isLargeGraph ? 1.5 : 2.5))
+      .attr('stroke-width', (d: any) => 0.5 + d.weight * edgeWidthScale)
 
     // 绘制节点
     const node = g.append('g').attr('class', 'nodes')
@@ -375,18 +383,18 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .style('cursor', 'pointer')
       .call(drag(simulation) as any)
 
-    // 节点内标签 —— 节点数 > 25 时默认隐藏，减少视觉干扰
-    const showStaticLabels = nodes.length <= 25
+    // 节点内标签 —— 根据节点数调整显示策略
+    const showStaticLabels = nodes.length <= 60  // 放宽阈值：60个节点以内都显示标签
     const labelText = g.append('g').attr('class', 'labels')
       .selectAll('text')
       .data(nodes)
       .enter()
       .append('text')
       .text((d: any) => {
-        const maxChars = Math.max(2, Math.floor(d.radius / 4))
+        const maxChars = Math.max(3, Math.floor(d.radius / 3.5))  // 允许更多字符
         return d.label.length > maxChars ? d.label.slice(0, maxChars) + '\u2026' : d.label
       })
-      .attr('font-size', (d: any) => Math.max(8, Math.min(d.radius * 0.55, 14)))
+      .attr('font-size', (d: any) => Math.max(9, Math.min(d.radius * 0.5, 16)))  // 提高字体下限和上限
       .attr('fill', '#fde047')
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
@@ -402,7 +410,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .enter()
       .append('text')
       .text((d: any) => d.label)
-      .attr('font-size', (d: any) => Math.min(d.radius * 0.7, 18))
+      .attr('font-size', (d: any) => Math.min(d.radius * 0.65, 20))  // 悬停标签也稍大
       .attr('fill', '#fbbf24')
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
@@ -521,7 +529,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
 
     const filteredDataEdges = filteredData.edges.filter(e => e.weight >= edgeWeightThreshold)
     const linkCount = filteredDataEdges.length
-    const edgeOpacity = linkCount > 200 ? 0.06 : (linkCount > 80 ? 0.1 : (linkCount > 50 ? 0.15 : (linkCount > 20 ? 0.25 : 0.4)))
+    const edgeOpacity = linkCount > 300 ? 0.12 : (linkCount > 150 ? 0.18 : (linkCount > 80 ? 0.28 : (linkCount > 40 ? 0.38 : 0.5)))
     const isLargeGraph = filteredData.vertices.length > 80
 
     // 重置所有边
@@ -571,10 +579,10 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
           .attr('stroke', (d: any) => d.id === selectedNodeId ? '#fbbf24' : '#1e1b4b')
           .attr('stroke-width', (d: any) => d.id === selectedNodeId ? 3 : 1.5)
         svg.selectAll<SVGLineElement, any>('.links line')
-          .attr('stroke-opacity', feCount > 50 ? 0.15 : (feCount > 20 ? 0.25 : 0.4))
+          .attr('stroke-opacity', feCount > 150 ? 0.18 : (feCount > 80 ? 0.28 : (feCount > 40 ? 0.38 : 0.5)))
           .attr('stroke-width', (e: any) => 0.5 + e.weight * 2.5)
         svg.selectAll<SVGTextElement, any>('.labels text')
-          .style('opacity', filteredData ? (filteredData.vertices.length <= 25 ? 1 : 0) : 0)
+          .style('opacity', filteredData ? (filteredData.vertices.length <= 60 ? 1 : 0) : 0)
         svg.selectAll<SVGTextElement, any>('.hover-labels text').style('opacity', 0)
       }
       }
@@ -593,8 +601,12 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       const v = graphData.vertices.find(v => v.id === selectedKnowledgeId)
       return v ? `🔍 知识：${v.label}` : '🔍 知识邻域'
     }
+    // API 全量数据时显示概要
+    if (showAllByDefault && filteredData) {
+      return `🌐 全部概念（${filteredData.vertices.length} 顶点 · ${filteredData.edges.length} 边）`
+    }
     return ''
-  }, [selectedCorpus, selectedKnowledgeId, graphData])
+  }, [selectedCorpus, selectedKnowledgeId, graphData, showAllByDefault, filteredData])
 
   return (
     <div
