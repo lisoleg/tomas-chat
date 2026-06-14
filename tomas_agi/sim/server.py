@@ -1,573 +1,483 @@
 """
-TOMAS 后端 API 服务器
-提供 RESTful API 用于数据存储（替代 localStorage）
-使用 SQLite 数据库存储所有数据
+TOMAS 后端 API 服务器 — SQLAlchemy ORM 版
+============================================
+
+提供 RESTful API 用于数据存储，使用 SQLite + SQLAlchemy ORM。
+数据库文件默认在 D:/tomas-data/tomas.db。
 """
+
+import json
+from datetime import datetime
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
-import json
-import os
-from datetime import datetime
+from sqlalchemy import func, text, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+from models import (
+    DB_PATH, get_session,
+    CorpusEntry, ConflictDecision, ChatSession,
+    ApiKey, KnowledgeItem, KnowledgeTriple, Setting,
+)
 
 app = Flask(__name__)
 CORS(app)
 
-# 数据库文件
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'tomas.db')
+# ---- 工具函数 ----
 
-def get_db():
-    """获取数据库连接"""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _row_to_dict(row):
+    """将 SQLAlchemy 模型实例转为 dict（通用）"""
+    if row is None:
+        return None
+    d = {}
+    for col in row.__table__.columns:
+        d[col.name] = getattr(row, col.name)
+    return d
 
-def init_db():
-    """初始化数据库表"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 语料表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS corpus_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            text TEXT NOT NULL,
-            domain TEXT,
-            concepts_count INTEGER DEFAULT 0,
-            relations_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 冲突决策表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS conflict_decisions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conflict_id TEXT NOT NULL,
-            concept_name TEXT,
-            domain TEXT,
-            decision TEXT,
-            resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(conflict_id)
-        )
-    ''')
-    
-    # 聊天会话表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT UNIQUE NOT NULL,
-            title TEXT,
-            messages TEXT,  -- JSON 字符串
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # API Key 表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS api_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key_name TEXT UNIQUE NOT NULL,
-            key_value TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 知识条目表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS knowledge_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            concept TEXT NOT NULL,
-            content TEXT,
-            source TEXT,
-            type TEXT DEFAULT 'concept',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    # 迁移：为旧表添加 type 列（如果不存在）
-    try:
-        cursor.execute('ALTER TABLE knowledge_items ADD COLUMN type TEXT DEFAULT \'concept\'')
-    except:
-        pass  # 列已存在
+def _dt_to_ts(dt):
+    """datetime → 毫秒时间戳"""
+    if dt is None:
+        return 0
+    if isinstance(dt, str):
+        try:
+            dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return 0
+    return int(dt.timestamp() * 1000)
 
-    # 知识三元组表（用于图谱可视化）
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS knowledge_triples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject TEXT NOT NULL,
-            predicate TEXT NOT NULL,
-            object TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_triples_subject ON knowledge_triples(subject)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_triples_object ON knowledge_triples(object)')
+def _ts_to_dt(ts):
+    """毫秒时间戳 → datetime"""
+    if ts and isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts / 1000)
+    return None
 
-    conn.commit()
-    conn.close()
 
 # ==================== 语料 API ====================
 
-@app.route('/api/corpus', methods=['GET'])
+@app.route("/api/corpus", methods=["GET"])
 def get_corpus():
-    """获取所有语料"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM corpus_entries ORDER BY created_at DESC')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    entries = []
-    for row in rows:
-        entries.append({
-            'id': row['id'],
-            'text': row['text'],
-            'domain': row['domain'],
-            'conceptsCount': row['concepts_count'],
-            'relationsCount': row['relations_count'],
-            'createdAt': row['created_at']
-        })
-    
-    return jsonify({'success': True, 'data': entries})
+    session = get_session()
+    try:
+        rows = session.query(CorpusEntry).order_by(CorpusEntry.created_at.desc()).all()
+        entries = [
+            {
+                "id": r.id,
+                "text": r.text,
+                "domain": r.domain,
+                "conceptsCount": r.concepts_count,
+                "relationsCount": r.relations_count,
+                "createdAt": r.created_at.isoformat() if r.created_at else "",
+            }
+            for r in rows
+        ]
+        return jsonify({"success": True, "data": entries})
+    finally:
+        session.close()
 
-@app.route('/api/corpus', methods=['POST'])
+
+@app.route("/api/corpus", methods=["POST"])
 def add_corpus():
-    """添加语料"""
     data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 支持前端字段名（name, content）和后端字段名（text, domain）
-    text = data.get('text', data.get('name', ''))
-    domain = data.get('domain', data.get('content', 'general'))
-    concepts_count = data.get('conceptsCount', data.get('conceptsCount', 0))
-    relations_count = data.get('relationsCount', data.get('relationsCount', 0))
-    
-    cursor.execute('''
-        INSERT INTO corpus_entries (text, domain, concepts_count, relations_count)
-        VALUES (?, ?, ?, ?)
-    ''', (text, domain, concepts_count, relations_count))
-    
-    conn.commit()
-    entry_id = cursor.lastrowid
-    conn.close()
-    
-    return jsonify({'success': True, 'id': entry_id})
+    session = get_session()
+    try:
+        text = data.get("text", data.get("name", ""))
+        domain = data.get("domain", data.get("content", "general"))
+        concepts_count = data.get("conceptsCount", 0)
+        relations_count = data.get("relationsCount", 0)
 
-@app.route('/api/corpus/<int:entry_id>', methods=['DELETE'])
+        entry = CorpusEntry(
+            text=text,
+            domain=domain,
+            concepts_count=concepts_count,
+            relations_count=relations_count,
+        )
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+        return jsonify({"success": True, "id": entry_id})
+    finally:
+        session.close()
+
+
+@app.route("/api/corpus/<int:entry_id>", methods=["DELETE"])
 def delete_corpus(entry_id):
-    """删除语料"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM corpus_entries WHERE id = ?', (entry_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    session = get_session()
+    try:
+        session.query(CorpusEntry).filter_by(id=entry_id).delete()
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== 冲突决策 API ====================
 
-@app.route('/api/conflicts', methods=['GET'])
+@app.route("/api/conflicts", methods=["GET"])
 def get_conflicts():
-    """获取所有冲突决策"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM conflict_decisions')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    decisions = []
-    for row in rows:
-        decisions.append({
-            'conflictId': row['conflict_id'],
-            'conceptName': row['concept_name'],
-            'domain': row['domain'],
-            'decision': row['decision'],
-            'resolvedAt': row['resolved_at']
-        })
-    
-    return jsonify({'success': True, 'data': decisions})
+    session = get_session()
+    try:
+        rows = session.query(ConflictDecision).all()
+        decisions = [
+            {
+                "conflictId": r.conflict_id,
+                "conceptName": r.concept_name,
+                "domain": r.domain,
+                "decision": r.decision,
+                "resolvedAt": r.resolved_at.isoformat() if r.resolved_at else "",
+            }
+            for r in rows
+        ]
+        return jsonify({"success": True, "data": decisions})
+    finally:
+        session.close()
 
-@app.route('/api/conflicts', methods=['POST'])
+
+@app.route("/api/conflicts", methods=["POST"])
 def add_conflict():
-    """添加/更新冲突决策"""
     data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 尝试更新，如果不存在则插入
-    cursor.execute('''
-        INSERT INTO conflict_decisions (conflict_id, concept_name, domain, decision)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(conflict_id) DO UPDATE SET
-            decision = excluded.decision,
-            resolved_at = CURRENT_TIMESTAMP
-    ''', (data['conflictId'], data.get('conceptName', ''), data.get('domain', ''), data['decision']))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    session = get_session()
+    try:
+        stmt = sqlite_insert(ConflictDecision).values(
+            conflict_id=data["conflictId"],
+            concept_name=data.get("conceptName", ""),
+            domain=data.get("domain", ""),
+            decision=data["decision"],
+            resolved_at=datetime.utcnow(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["conflict_id"],
+            set_=dict(
+                decision=stmt.excluded.decision,
+                resolved_at=datetime.utcnow(),
+            ),
+        )
+        session.execute(stmt)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== 聊天会话 API ====================
 
-@app.route('/api/sessions', methods=['GET'])
+@app.route("/api/sessions", methods=["GET"])
 def get_sessions():
-    """获取所有聊天会话"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM chat_sessions ORDER BY updated_at DESC')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    sessions = []
-    for row in rows:
-        sessions.append({
-            'sessionId': row['session_id'],
-            'title': row['title'],
-            'messages': json.loads(row['messages']) if row['messages'] else [],
-            'createdAt': row['created_at'],
-            'updatedAt': row['updated_at']
-        })
-    
-    return jsonify({'success': True, 'data': sessions})
+    session = get_session()
+    try:
+        rows = session.query(ChatSession).order_by(ChatSession.updated_at.desc()).all()
+        sessions = [
+            {
+                "sessionId": r.session_id,
+                "title": r.title,
+                "messages": json.loads(r.messages) if r.messages else [],
+                "createdAt": r.created_at.isoformat() if r.created_at else "",
+                "updatedAt": r.updated_at.isoformat() if r.updated_at else "",
+            }
+            for r in rows
+        ]
+        return jsonify({"success": True, "data": sessions})
+    finally:
+        session.close()
 
-@app.route('/api/sessions', methods=['POST'])
+
+@app.route("/api/sessions", methods=["POST"])
 def save_sessions():
-    """保存聊天会话（批量更新）"""
-    data = request.json  # 期望是会话数组
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    for session in data:
-        cursor.execute('''
-            INSERT INTO chat_sessions (session_id, title, messages, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(session_id) DO UPDATE SET
-                title = excluded.title,
-                messages = excluded.messages,
-                updated_at = CURRENT_TIMESTAMP
-        ''', (session['sessionId'], session.get('title', ''), json.dumps(session.get('messages', []))))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    data = request.json
+    session = get_session()
+    try:
+        for s in data:
+            stmt = sqlite_insert(ChatSession).values(
+                session_id=s["sessionId"],
+                title=s.get("title", ""),
+                messages=json.dumps(s.get("messages", [])),
+                updated_at=datetime.utcnow(),
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["session_id"],
+                set_=dict(
+                    title=stmt.excluded.title,
+                    messages=stmt.excluded.messages,
+                    updated_at=datetime.utcnow(),
+                ),
+            )
+            session.execute(stmt)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
 
-@app.route('/api/sessions/<session_id>', methods=['DELETE'])
+
+@app.route("/api/sessions/<session_id>", methods=["DELETE"])
 def delete_session(session_id):
-    """删除聊天会话"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM chat_sessions WHERE session_id = ?', (session_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    session = get_session()
+    try:
+        session.query(ChatSession).filter_by(session_id=session_id).delete()
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== API Key API ====================
 
-@app.route('/api/apikey', methods=['GET'])
+@app.route("/api/apikey", methods=["GET"])
 def get_api_key():
-    """获取 API Key"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT key_value FROM api_keys WHERE key_name = ?', ('deepseek',))
-    row = cursor.fetchone()
-    conn.close()
-    
-    return jsonify({'success': True, 'data': row['key_value'] if row else ''})
+    session = get_session()
+    try:
+        row = session.query(ApiKey).filter_by(key_name="deepseek").first()
+        return jsonify({"success": True, "data": row.key_value if row else ""})
+    finally:
+        session.close()
 
-@app.route('/api/apikey', methods=['POST'])
+
+@app.route("/api/apikey", methods=["POST"])
 def save_api_key():
-    """保存 API Key"""
     data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO api_keys (key_name, key_value)
-        VALUES (?, ?)
-        ON CONFLICT(key_name) DO UPDATE SET
-            key_value = excluded.key_value,
-            updated_at = CURRENT_TIMESTAMP
-    ''', ('deepseek', data.get('apiKey', '')))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    session = get_session()
+    try:
+        stmt = sqlite_insert(ApiKey).values(
+            key_name="deepseek",
+            key_value=data.get("apiKey", ""),
+            updated_at=datetime.utcnow(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["key_name"],
+            set_=dict(
+                key_value=stmt.excluded.key_value,
+                updated_at=datetime.utcnow(),
+            ),
+        )
+        session.execute(stmt)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== 知识条目 API ====================
 
-@app.route('/api/knowledge', methods=['GET'])
+@app.route("/api/knowledge", methods=["GET"])
 def get_knowledge():
-    """获取所有知识条目（返回前端 KnowledgeItem 格式）"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM knowledge_items')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    items = []
-    for row in rows:
-        # 将后端字段映射为前端 KnowledgeItem 格式
-        created_at_str = row['created_at']
-        # 尝试解析为时间戳（毫秒），否则保持字符串
-        try:
-            if created_at_str:
-                dt = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
-                created_at_ts = int(dt.timestamp() * 1000)
-            else:
-                created_at_ts = 0
-        except (ValueError, TypeError):
-            created_at_ts = 0
-        
-        items.append({
-            'id': row['id'],
-            'type': row['type'] if row['type'] else 'concept',
-            'label': row['concept'],
-            'extra': row['content'] if row['content'] else '',
-            'domain': row['source'] if row['source'] else '',
-            'createdAt': created_at_ts
-        })
-    
-    return jsonify({'success': True, 'data': items})
+    session = get_session()
+    try:
+        rows = session.query(KnowledgeItem).all()
+        items = [
+            {
+                "id": r.id,
+                "type": r.type if r.type else "concept",
+                "label": r.concept,
+                "extra": r.content if r.content else "",
+                "domain": r.source if r.source else "",
+                "createdAt": _dt_to_ts(r.created_at),
+            }
+            for r in rows
+        ]
+        return jsonify({"success": True, "data": items})
+    finally:
+        session.close()
 
-@app.route('/api/knowledge', methods=['POST'])
+
+@app.route("/api/knowledge", methods=["POST"])
 def add_knowledge():
-    """批量添加知识条目（同时为关系生成三元组）"""
-    items = request.json  # 期望是数组
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    ids = []
-    triple_count = 0
-    for item in items:
-        item_type = item.get('type', 'concept')
-        label = item.get('label', '')
-        extra = item.get('extra', '')
-        domain = item.get('domain', '')
-        created_at = item.get('createdAt', None)
-        # 兼容毫秒时间戳 → SQLite datetime
-        if created_at and isinstance(created_at, (int, float)):
-            created_at = datetime.fromtimestamp(created_at / 1000).strftime('%Y-%m-%d %H:%M:%S')
-        
-        # 映射字段：label -> concept, extra -> content, domain -> source
-        cursor.execute('''
-            INSERT INTO knowledge_items (concept, content, source, type, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (label, extra, domain, item_type, created_at))
-        item_id = cursor.lastrowid
-        ids.append(item_id)
-        
-        # 如果是关系条目，额外写入三元组表（用于图谱可视化）
-        if item_type == 'relation':
-            # label 格式为 "src → dst"，extra 是关系类型
-            arrow_idx = label.find(' → ')
-            if arrow_idx > 0:
-                src = label[:arrow_idx].strip()
-                dst = label[arrow_idx + 3:].strip()
-                predicate = extra if extra else 'related_to'
-                cursor.execute('''
-                    INSERT OR IGNORE INTO knowledge_triples (subject, predicate, object, created_at)
-                    VALUES (?, ?, ?, ?)
-                ''', (src, predicate, dst, created_at))
-                triple_count += 1
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'ids': ids, 'triples_added': triple_count})
+    items = request.json
+    session = get_session()
+    try:
+        ids = []
+        triple_count = 0
+        for item in items:
+            item_type = item.get("type", "concept")
+            label = item.get("label", "")
+            extra = item.get("extra", "")
+            domain = item.get("domain", "")
+            created_at = item.get("createdAt", None)
+            created_dt = _ts_to_dt(created_at) or datetime.utcnow()
 
-@app.route('/api/knowledge/<int:item_id>', methods=['DELETE'])
+            ki = KnowledgeItem(
+                concept=label,
+                content=extra,
+                source=domain,
+                type=item_type,
+                created_at=created_dt,
+            )
+            session.add(ki)
+            session.flush()
+            ids.append(ki.id)
+
+            # 关系条目 → 额外写入三元组
+            if item_type == "relation":
+                arrow_idx = label.find(" → ")
+                if arrow_idx > 0:
+                    src = label[:arrow_idx].strip()
+                    dst = label[arrow_idx + 3:].strip()
+                    predicate = extra if extra else "related_to"
+                    # INSERT OR IGNORE（Safeguard 重复）
+                    existing = session.query(KnowledgeTriple).filter_by(
+                        subject=src, predicate=predicate, object=dst
+                    ).first()
+                    if not existing:
+                        session.add(KnowledgeTriple(
+                            subject=src,
+                            predicate=predicate,
+                            object=dst,
+                            created_at=created_dt,
+                        ))
+                        triple_count += 1
+
+        session.commit()
+        return jsonify({"success": True, "ids": ids, "triples_added": triple_count})
+    finally:
+        session.close()
+
+
+@app.route("/api/knowledge/<int:item_id>", methods=["DELETE"])
 def delete_knowledge(item_id):
-    """删除知识条目"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM knowledge_items WHERE id = ?', (item_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+    session = get_session()
+    try:
+        session.query(KnowledgeItem).filter_by(id=item_id).delete()
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== 设置 API ====================
 
-@app.route('/api/settings/<key>', methods=['GET'])
+@app.route("/api/settings/<key>", methods=["GET"])
 def get_setting(key):
-    """获取设置项"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
-    row = cursor.fetchone()
-    
-    conn.close()
-    
-    if row:
-        return jsonify({'success': True, 'data': row['value']})
-    else:
-        return jsonify({'success': False, 'message': '设置项不存在'}), 404
+    session = get_session()
+    try:
+        row = session.query(Setting).filter_by(key=key).first()
+        if row:
+            return jsonify({"success": True, "data": row.value})
+        else:
+            return jsonify({"success": False, "message": "设置项不存在"}), 404
+    finally:
+        session.close()
 
-@app.route('/api/settings', methods=['POST'])
+
+@app.route("/api/settings", methods=["POST"])
 def save_setting():
-    """保存设置项"""
     data = request.json
-    key = data.get('key')
-    value = data.get('value')
-    
+    key = data.get("key")
+    value = data.get("value")
     if not key:
-        return jsonify({'success': False, 'message': 'key 不能为空'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO settings (key, value)
-        VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    ''', (key, value))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
+        return jsonify({"success": False, "message": "key 不能为空"}), 400
+
+    session = get_session()
+    try:
+        stmt = sqlite_insert(Setting).values(
+            key=key,
+            value=value,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["key"],
+            set_=dict(value=stmt.excluded.value),
+        )
+        session.execute(stmt)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
 
 # ==================== 知识三元组 API ====================
 
-@app.route('/api/knowledge/triples')
+@app.route("/api/knowledge/triples")
 def get_triples():
-    """查询知识三元组（支持过滤）"""
-    subject = request.args.get('subject', '')
-    predicate = request.args.get('predicate', '')
-    obj = request.args.get('object', '')
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 构建查询
-    query = 'SELECT * FROM knowledge_triples WHERE 1=1'
-    params = []
-    
-    if subject:
-        query += ' AND subject LIKE ?'
-        params.append(f'%{subject}%')
-    
-    if predicate:
-        query += ' AND predicate LIKE ?'
-        params.append(f'%{predicate}%')
-    
-    if obj:
-        query += ' AND object LIKE ?'
-        params.append(f'%{obj}%')
-    
-    query += ' ORDER BY id LIMIT ? OFFSET ?'
-    params.extend([limit, offset])
-    
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    
-    # 统计总数
-    count_query = 'SELECT COUNT(*) FROM knowledge_triples WHERE 1=1'
-    count_params = []
-    if subject:
-        count_query += ' AND subject LIKE ?'
-        count_params.append(f'%{subject}%')
-    if predicate:
-        count_query += ' AND predicate LIKE ?'
-        count_params.append(f'%{predicate}%')
-    if obj:
-        count_query += ' AND object LIKE ?'
-        count_params.append(f'%{obj}%')
-    
-    cursor.execute(count_query, count_params)
-    total = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'data': [{'id': r['id'], 'subject': r['subject'], 'predicate': r['predicate'], 'object': r['object']} for r in rows],
-        'total': total,
-        'limit': limit,
-        'offset': offset
-    })
+    subject = request.args.get("subject", "")
+    predicate = request.args.get("predicate", "")
+    obj = request.args.get("object", "")
+    limit = int(request.args.get("limit", 100))
+    offset = int(request.args.get("offset", 0))
 
-@app.route('/api/knowledge/subjects')
-def get_subjects():
-    """获取所有唯一实体"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT DISTINCT subject FROM knowledge_triples ORDER BY subject')
-    subjects = [row['subject'] for row in cursor.fetchall()]
-    
-    conn.close()
-    return jsonify({'success': True, 'data': subjects})
+    session = get_session()
+    try:
+        q = session.query(KnowledgeTriple)
+        if subject:
+            q = q.filter(KnowledgeTriple.subject.like(f"%{subject}%"))
+        if predicate:
+            q = q.filter(KnowledgeTriple.predicate.like(f"%{predicate}%"))
+        if obj:
+            q = q.filter(KnowledgeTriple.object.like(f"%{obj}%"))
 
-@app.route('/api/knowledge/predicates')
-def get_predicates():
-    """获取所有唯一关系"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT DISTINCT predicate FROM knowledge_triples ORDER BY predicate')
-    predicates = [row['predicate'] for row in cursor.fetchall()]
-    
-    conn.close()
-    return jsonify({'success': True, 'data': predicates})
+        total = q.count()
+        rows = q.order_by(KnowledgeTriple.id).limit(limit).offset(offset).all()
 
-@app.route('/api/knowledge/graph')
-def get_graph():
-    """获取图数据（用于可视化）"""
-    limit = int(request.args.get('limit', 100))
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 获取三元组
-    cursor.execute('''
-        SELECT subject, predicate, object 
-        FROM knowledge_triples 
-        LIMIT ?
-    ''', (limit,))
-    
-    triples = []
-    concepts = set()
-    
-    for row in cursor.fetchall():
-        triples.append({
-            'subject': row['subject'],
-            'predicate': row['predicate'],
-            'object': row['object']
+        return jsonify({
+            "success": True,
+            "data": [
+                {"id": r.id, "subject": r.subject, "predicate": r.predicate, "object": r.object}
+                for r in rows
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
         })
-        concepts.add(row['subject'])
-        # 仅当 object 不是数字/日期等字面量时才添加为概念
-        if not row['object'][0].isdigit() and len(row['object']) < 50:
-            concepts.add(row['object'])
-    
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'triples': triples,
-        'concepts': list(concepts),
-        'total': len(triples)
-    })
+    finally:
+        session.close()
+
+
+@app.route("/api/knowledge/subjects")
+def get_subjects():
+    session = get_session()
+    try:
+        rows = session.query(KnowledgeTriple.subject).distinct().order_by(KnowledgeTriple.subject).all()
+        return jsonify({"success": True, "data": [r[0] for r in rows]})
+    finally:
+        session.close()
+
+
+@app.route("/api/knowledge/predicates")
+def get_predicates():
+    session = get_session()
+    try:
+        rows = session.query(KnowledgeTriple.predicate).distinct().order_by(KnowledgeTriple.predicate).all()
+        return jsonify({"success": True, "data": [r[0] for r in rows]})
+    finally:
+        session.close()
+
+
+@app.route("/api/knowledge/graph")
+def get_graph():
+    limit = int(request.args.get("limit", 100))
+    session = get_session()
+    try:
+        rows = session.query(KnowledgeTriple).limit(limit).all()
+
+        triples = []
+        concepts = set()
+        for r in rows:
+            triples.append({
+                "subject": r.subject,
+                "predicate": r.predicate,
+                "object": r.object,
+            })
+            concepts.add(r.subject)
+            # 仅当 object 不是数字/日期等字面量时才添加为概念
+            obj_val = r.object
+            if obj_val and not obj_val[0].isdigit() and len(obj_val) < 50:
+                concepts.add(obj_val)
+
+        return jsonify({
+            "success": True,
+            "triples": triples,
+            "concepts": list(concepts),
+            "total": len(triples),
+        })
+    finally:
+        session.close()
+
 
 # ==================== 健康检查 ====================
 
-@app.route('/api/health')
+@app.route("/api/health")
 def health():
-    """健康检查"""
-    return jsonify({'status': 'ok', 'db': DB_PATH})
+    return jsonify({"status": "ok", "db": DB_PATH})
 
-if __name__ == '__main__':
-    init_db()
+
+if __name__ == "__main__":
+    # 首次启动时导入 models 会自动建表（通过 get_engine 触发 create_all）
+    from models import get_engine
+    get_engine()
     print(f"数据库初始化完成: {DB_PATH}")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
