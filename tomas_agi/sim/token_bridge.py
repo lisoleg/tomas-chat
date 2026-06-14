@@ -307,35 +307,73 @@ class TokenBridge:
         phi = text_to_octonion(text)
         return self.find_nearest_concepts(phi, top_k)
 
-    def extract_subgraph(self, vertex_ids: List[int], radius: int = 2) -> Dict:
+    def extract_subgraph(self, vertex_ids: List[int], radius: int = 2, kappa: float = 0.0) -> Dict:
         """
-        从匹配概念出发，BFS 扩展子图
+        从匹配概念出发，BFS 扩展子图（带 κ-Gate 语义剪枝）
+
+        κ-Gate 剪枝机制（TOMAS 核心优化）：
+        - κ = 0：不剪枝，全图 BFS（原有行为）
+        - κ > 0：仅遍历 info_existence(I(X)) ≥ κ 的顶点/边
+        - κ 越大，保留的信息越"核心"，子图越小
 
         Args:
             vertex_ids: 起始顶点 ID 列表
             radius: BFS 扩展半径
+            kappa: I(X) 信息存在度阈值（κ-Gate 剪枝参数）
 
         Returns:
-            {'vertices': [...], 'edges': [...], 'size': int}
+            {'vertices': [...], 'edges': [...], 'size': int, 'kappa': float,
+             'pruned_vertices': int, 'pruned_edges': int}
         """
-        visited = set(vertex_ids)
+        visited = set()
         edge_indices = set()
-        queue = deque([(vid, 0) for vid in vertex_ids])
+        pruned_vertices = 0
+        pruned_edges = 0
+
+        # 初始化：仅添加 I(X) ≥ κ 的种子顶点
+        for vid in vertex_ids:
+            if vid >= len(self.loader.vertices):
+                continue
+            v = self.loader.vertices[vid]
+            ix = v.get('info_existence', 1.0)
+            if ix >= kappa:
+                visited.add(vid)
+            else:
+                pruned_vertices += 1
+
+        queue = deque([(vid, 0) for vid in visited])
 
         while queue:
             vid, dist = queue.popleft()
             if dist >= radius:
                 continue
 
-            # 查看邻接边
+            v = self.loader.vertices[vid] if vid < len(self.loader.vertices) else {}
+            ix_v = v.get('info_existence', 1.0)
+
             for eidx in self.loader.get_adjacency().get(vid, []):
                 edge = self.loader.edges[eidx]
-                edge_indices.add(eidx)
+
+                # κ-Gate 剪枝：边权重不足则跳过
+                edge_ix = edge.get('delta_weight', ix_v)
+                if kappa > 0 and edge_ix < kappa:
+                    pruned_edges += 1
+                    continue
 
                 neighbor = edge['dst'] if edge['src'] == vid else edge['src']
-                if neighbor not in visited and neighbor < len(self.loader.vertices):
-                    visited.add(neighbor)
-                    queue.append((neighbor, dist + 1))
+                if neighbor in visited or neighbor >= len(self.loader.vertices):
+                    continue
+
+                # κ-Gate 剪枝：邻居顶点 I(X) 不足则跳过
+                nv = self.loader.vertices[neighbor]
+                n_ix = nv.get('info_existence', 1.0)
+                if kappa > 0 and n_ix < kappa:
+                    pruned_vertices += 1
+                    continue
+
+                edge_indices.add(eidx)
+                visited.add(neighbor)
+                queue.append((neighbor, dist + 1))
 
         # 收集子图顶点和边
         sub_vertices = [self.loader.vertices[vid] for vid in visited if vid < len(self.loader.vertices)]
@@ -344,7 +382,10 @@ class TokenBridge:
         return {
             'vertices': sub_vertices,
             'edges': sub_edges,
-            'size': len(sub_vertices) + len(sub_edges)
+            'size': len(sub_vertices) + len(sub_edges),
+            'kappa': kappa,
+            'pruned_vertices': pruned_vertices,
+            'pruned_edges': pruned_edges,
         }
 
     def decode(self, phi: np.ndarray) -> np.ndarray:
@@ -537,7 +578,7 @@ class InferenceEngine:
         """设置 φ 监管器"""
         self.phi_gate = phi_gate
 
-    def query(self, text: str, top_k: int = 5, subgraph_radius: int = 2) -> Dict:
+    def query(self, text: str, top_k: int = 5, subgraph_radius: int = 2, kappa: float = 0.0) -> Dict:
         """
         输入文本 → 编码 → 概念匹配 → 子图扩展 → 解码 → 输出
 
@@ -558,7 +599,7 @@ class InferenceEngine:
 
         # Step 3: 子图扩展
         matched_ids = [m['vertex_id'] for m in matched if m['similarity'] > 0.3]
-        subgraph = self.bridge.extract_subgraph(matched_ids, subgraph_radius) if matched_ids else {
+        subgraph = self.bridge.extract_subgraph(matched_ids, subgraph_radius, kappa) if matched_ids else {
             'vertices': [], 'edges': [], 'size': 0
         }
 
@@ -619,7 +660,8 @@ class InferenceEngine:
 
     def generate_response(self, text: str, top_k: int = 5,
                          force_translator: bool = False,
-                         force_creative: bool = False) -> Dict:
+                         force_creative: bool = False,
+                         kappa: float = 0.0) -> Dict:
         """
         智能路由：翻译官（事实）↔ 作家（创造）
 
@@ -638,7 +680,7 @@ class InferenceEngine:
             }
         """
         # Step 1: EML 查询
-        result = self.query(text, top_k)
+        result = self.query(text, top_k, kappa=kappa)
         confidence = result['confidence']
 
         # Step 2: 判断路由
@@ -782,7 +824,7 @@ class InferenceEngine:
             # 列出子图中的概念
             sub_vertices = self.bridge.extract_subgraph(
                 [m['vertex_id'] for m in result['matched_concepts'] if m['similarity'] > 0.3],
-                radius=1
+                radius=1, kappa=0.0
             )['vertices']
 
             if len(sub_vertices) > len(result['matched_concepts']):
@@ -1070,6 +1112,7 @@ def main():
     parser.add_argument("--force-translator", action="store_true", help="强制使用翻译官（不走作家）")
     parser.add_argument("--force-creative", action="store_true", help="强制使用作家（不走翻译官）")
     parser.add_argument("--threshold", type=float, default=0.5, help="翻译官/作家族由阈值")
+    parser.add_argument("--kappa", type=float, default=0.0, help="κ-Gate 语义剪枝阈值 (0=不剪枝, >0=仅保留 I(X)≥κ 的顶点/边)")
     args = parser.parse_args()
 
     if not args.load:
@@ -1185,6 +1228,7 @@ def main():
             args.query, args.top_k,
             force_translator=args.force_translator,
             force_creative=args.force_creative,
+            kappa=args.kappa,
         )
 
         # 显示模式

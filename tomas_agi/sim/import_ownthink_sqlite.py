@@ -96,7 +96,118 @@ def is_pseudo_concept(s):
 # 主导入逻辑
 # ===================================================================
 
-def import_ownthink(csv_path, max_rows=0, dry_run=False, batch_size=BATCH_SIZE):
+def compute_i_weight(engine, debug=False):
+    """
+    后计算 i_weight（I(X) 信息存在度）
+
+    启发式：i_weight = 1.0 + ln(1 + subject_freq) / 10.0
+    - subject_freq = 该主体在 knowledge_triples 中的出现次数
+    - 范围：[1.0, ~3.0]（140M 行里最频繁的主体约 100 万次）
+    - 含义：主体越中心，i_weight 越高，κ-Gate 越不容易剪枝它
+    """
+    import math
+
+    start = time.time()
+    print()
+    print("=" * 60)
+    print("  后计算 i_weight（I(X) 信息存在度）")
+    print("=" * 60)
+
+    with engine.connect() as conn:
+        # 1. 统计总行数
+        total = conn.execute(text("SELECT COUNT(*) FROM knowledge_triples")).scalar()
+        print(f"  三元组总数: {total:,}")
+
+        # 2. 计算主体频率（一次全表扫描）
+        print("  📊 计算主体频率...")
+        freq_start = time.time()
+
+        # 用临时表存 subject -> freq 映射
+        conn.execute(text("DROP TABLE IF EXISTS _subject_freq"))
+        conn.execute(text("""
+            CREATE TABLE _subject_freq AS
+            SELECT subject, COUNT(*) as freq
+            FROM knowledge_triples
+            GROUP BY subject
+        """))
+        conn.execute(text("CREATE INDEX idx_sf ON _subject_freq(subject)"))
+        freq_time = time.time() - freq_start
+        freq_count = conn.execute(text("SELECT COUNT(*) FROM _subject_freq")).scalar()
+        print(f"  独立主体数:  {freq_count:,}")
+        print(f"  频率计算耗时: {freq_time:.1f}s")
+
+        # 3. 更新 i_weight（分批，避免长事务）
+        print("  🔄 更新 i_weight...")
+        update_start = time.time()
+
+        # 获取最大频率（用于归一化）
+        max_freq_result = conn.execute(text("SELECT MAX(freq) FROM _subject_freq")).scalar()
+        if max_freq_result is None:
+            print("  ⚠️  _subject_freq 为空，跳过 i_weight 计算")
+            conn.execute(text("DROP TABLE _subject_freq"))
+            conn.commit()
+            return
+        max_freq = max_freq_result
+        print(f"  最大主体频率: {max_freq:,}")
+
+        # 分批更新（每 5M 行一批）
+        UPDATE_BATCH = 5000000
+        updated = 0
+
+        # 方案：用 SQL 表达式直接更新（SQLite 支持）
+        # i_weight = 1.0 + LN(1.0 + freq) / 10.0
+        # 注意：SQLite 默认不启用 LN()，用 Python 侧计算再批量 UPDATE
+
+        # 先读出 (id, freq) 对，在 Python 侧算 i_weight，再批量 UPDATE
+        result = conn.execute(text("""
+            SELECT kt.id, sf.freq
+            FROM knowledge_triples kt
+            JOIN _subject_freq sf ON sf.subject = kt.subject
+        """))
+
+        batch = []
+        for row_id, freq in result:
+            i_weight = 1.0 + math.log(1.0 + freq) / 10.0
+            batch.append({"id": row_id, "i_weight": i_weight})
+
+            if len(batch) >= UPDATE_BATCH:
+                conn.execute(text("UPDATE knowledge_triples SET i_weight = :i_weight WHERE id = :id"), batch)
+                updated += len(batch)
+                elapsed = time.time() - update_start
+                rate = updated / elapsed if elapsed > 0 else 0
+                print(f"    📝 {updated:>12,} / {total:,}  ({updated/total*100:.1f}%) | {rate:,.0f} 行/秒")
+                batch.clear()
+
+        # 最后一桶
+        if batch:
+            conn.execute(text("UPDATE knowledge_triples SET i_weight = :i_weight WHERE id = :id"), batch)
+            updated += len(batch)
+
+        conn.commit()
+
+        update_time = time.time() - update_start
+        print(f"  更新耗时:    {update_time:.1f}s")
+        print(f"  更新行数:    {updated:,}")
+
+        # 4. 删除临时表
+        conn.execute(text("DROP TABLE _subject_freq"))
+        conn.commit()
+
+    elapsed = time.time() - start
+    print(f"\n  ✅ i_weight 计算完成（总耗时: {elapsed/60:.1f} 分钟）")
+
+    # 5. 验证：展示 i_weight 分布
+    with engine.connect() as conn:
+        print("\n  📈 i_weight 分布抽样:")
+        for threshold in [0, 1.0, 1.5, 2.0, 2.5, 3.0]:
+            cnt = conn.execute(
+                text("SELECT COUNT(*) FROM knowledge_triples WHERE i_weight >= :t"),
+                {"t": threshold}
+            ).scalar()
+            print(f"    i_weight >= {threshold:4.1f}: {cnt:>12,} ({cnt/total*100:.1f}%)")
+
+
+def import_ownthink(csv_path, max_rows=0, dry_run=False, batch_size=BATCH_SIZE, compute_i_weight_flag=True):
     if not os.path.exists(csv_path):
         print(f"❌ 文件不存在: {csv_path}")
         sys.exit(1)
@@ -176,7 +287,12 @@ def import_ownthink(csv_path, max_rows=0, dry_run=False, batch_size=BATCH_SIZE):
 
     with open(csv_path, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
-        for row in reader:
+        # 跳过表头行（实体,属性,值）
+        header = next(reader, None)
+        if header and len(header) >= 3 and header[0].strip() == "实体":
+            print(f"  ⏭ 跳过表头行: {header}")
+
+        for row in reader:  # 从第一行数据开始
             if len(row) < 3:
                 continue
             total_rows += 1
@@ -248,6 +364,10 @@ def import_ownthink(csv_path, max_rows=0, dry_run=False, batch_size=BATCH_SIZE):
     print(f"  平均速率:      {rate:,.0f} 行/秒")
     print(f"  数据库:        {DB_PATH}")
 
+    # ---- 后计算 i_weight ----
+    if compute_i_weight_flag:
+        compute_i_weight(engine)
+
 
 # ===================================================================
 # CLI
@@ -272,6 +392,8 @@ def main():
                         help="试运行，仅统计不写入")
     parser.add_argument("--batch", "-b", type=int, default=BATCH_SIZE,
                         help=f"批次大小（默认: {BATCH_SIZE}）")
+    parser.add_argument("--skip-i-weight", action="store_true",
+                        help="跳过 i_weight 后计算（加快导入速度）")
     args = parser.parse_args()
 
     import_ownthink(
@@ -279,6 +401,7 @@ def main():
         max_rows=args.limit,
         dry_run=args.dry_run,
         batch_size=args.batch,
+        compute_i_weight_flag=not args.skip_i_weight,
     )
 
 

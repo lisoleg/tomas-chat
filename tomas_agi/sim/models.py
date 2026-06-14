@@ -13,7 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, DateTime,
-    Index, UniqueConstraint, event
+    Float, Index, UniqueConstraint, event, text as sa_text
 )
 from sqlalchemy.orm import DeclarativeBase, scoped_session, sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -128,14 +128,16 @@ class KnowledgeTriple(Base):
         Index("idx_triples_object", "object"),
         Index("idx_triples_sp", "subject", "predicate"),
         Index("idx_triples_po", "predicate", "object"),
+        Index("idx_triples_i_weight", "i_weight"),       # κ-Gate 剪枝索引
         # INSERT OR IGNORE 去重依赖此唯一约束
         UniqueConstraint("subject", "predicate", "object", name="uq_triple_spo"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    subject = Column(Text, nullable=False)
+    subject   = Column(Text, nullable=False)
     predicate = Column(Text, nullable=False)
-    object = Column(Text, nullable=False)
+    object    = Column(Text, nullable=False)
+    i_weight  = Column(Float, default=1.0, server_default=sa_text("1.0"), nullable=False)   # I(X) 信息存在度（κ-Gate 用）
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

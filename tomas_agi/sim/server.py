@@ -389,6 +389,7 @@ def get_triples():
     obj = request.args.get("object", "")
     limit = int(request.args.get("limit", 100))
     offset = int(request.args.get("offset", 0))
+    min_i_weight = float(request.args.get("min_i_weight", 0))
 
     session = get_session()
     try:
@@ -399,14 +400,22 @@ def get_triples():
             q = q.filter(KnowledgeTriple.predicate.like(f"%{predicate}%"))
         if obj:
             q = q.filter(KnowledgeTriple.object.like(f"%{obj}%"))
+        if min_i_weight > 0:
+            q = q.filter(KnowledgeTriple.i_weight >= min_i_weight)
 
         total = q.count()
-        rows = q.order_by(KnowledgeTriple.id).limit(limit).offset(offset).all()
+        rows = q.order_by(KnowledgeTriple.i_weight.desc()).limit(limit).offset(offset).all()
 
         return jsonify({
             "success": True,
             "data": [
-                {"id": r.id, "subject": r.subject, "predicate": r.predicate, "object": r.object}
+                {
+                    "id": r.id,
+                    "subject": r.subject,
+                    "predicate": r.predicate,
+                    "object": r.object,
+                    "i_weight": round(r.i_weight, 4) if r.i_weight else 1.0,
+                }
                 for r in rows
             ],
             "total": total,
@@ -439,10 +448,27 @@ def get_predicates():
 
 @app.route("/api/knowledge/graph")
 def get_graph():
-    limit = int(request.args.get("limit", 100))
+    limit = int(request.args.get("limit", 200))
+    subject = request.args.get("subject", "")
+    min_i_weight = float(request.args.get("min_i_weight", 0))
+
     session = get_session()
     try:
-        rows = session.query(KnowledgeTriple).limit(limit).all()
+        q = session.query(KnowledgeTriple)
+
+        # κ-Gate 剪枝：仅取 i_weight 高于阈值的边
+        if min_i_weight > 0:
+            q = q.filter(KnowledgeTriple.i_weight >= min_i_weight)
+
+        # 按主体过滤（子图展开）
+        if subject:
+            # 1-hop：subject 做主语或宾语
+            q = q.filter(
+                (KnowledgeTriple.subject == subject) |
+                (KnowledgeTriple.object == subject)
+            )
+
+        rows = q.order_by(KnowledgeTriple.i_weight.desc()).limit(limit).all()
 
         triples = []
         concepts = set()
@@ -451,9 +477,9 @@ def get_graph():
                 "subject": r.subject,
                 "predicate": r.predicate,
                 "object": r.object,
+                "i_weight": round(r.i_weight, 4) if r.i_weight else 1.0,
             })
             concepts.add(r.subject)
-            # 仅当 object 不是数字/日期等字面量时才添加为概念
             obj_val = r.object
             if obj_val and not obj_val[0].isdigit() and len(obj_val) < 50:
                 concepts.add(obj_val)
@@ -463,6 +489,7 @@ def get_graph():
             "triples": triples,
             "concepts": list(concepts),
             "total": len(triples),
+            "min_i_weight": min_i_weight,
         })
     finally:
         session.close()
