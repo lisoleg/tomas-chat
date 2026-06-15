@@ -1,6 +1,6 @@
-# TOMAS-AGI v2.0 — 用户使用手册
+# TOMAS-AGI v3.0 — 用户使用手册
 
-> **版本**: v2.0 (V3 混合推理) | **更新**: 2026-06-14 | **状态**: M1-M5 全部完成
+> **版本**: v3.0 (V3 混合推理) | **更新: 2026-06-14 | **状态**: M1-M5 全部完成，前端测试就绪
 >
 > 作者：章锋（章锋） | **许可证**: Apache 2.0
 > © 2026 复合体理学研究中心（TOMAS 项目组）
@@ -17,9 +17,10 @@
 6. [内核模块指南](#6-内核模块指南)
 7. [FPGA 部署](#7-fpga-部署)
 8. [CLI 工具链](#8-cli-工具链)
-9. [API 参考](#9-api-参考)
-10. [故障排除](#10-故障排除)
-11. [附录：术语表](#11-附录术语表)
+9. [前端测试](#9-前端测试)
+10. [API 参考](#10-api-参考)
+11. [故障排除](#11-故障排除)
+12. [附录：术语表](#12-附录术语表)
 
 ---
 
@@ -858,7 +859,44 @@ python integrity_check.py --json
 
 ---
 
-## 9. API 参考
+## 9. 前端测试
+
+### 9.1 运行前端单元测试
+
+```bash
+cd deepseek-chat
+npm test              # 运行所有测试（Vitest）
+npm test:ui          # 打开 Vitest UI 界面
+```
+
+### 9.2 测试覆盖
+
+当前测试覆盖：
+- ✅ Toast 组件（4 个测试）
+  - 渲染 ToastProvider
+  - 点击按钮显示 Toast
+  - Toast 自动消失（duration）
+  - Hook 错误捕获
+
+### 9.3 添加新测试
+
+在 `src/test/` 目录创建 `.test.tsx` 文件：
+
+```typescript
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+describe('MyComponent', () => {
+  it('should render', () => {
+    render(<MyComponent />)
+    expect(screen.getByText('Expected')).toBeInTheDocument()
+  })
+})
+```
+
+---
+
+## 10. API 参考
 
 ### 8.1 Python API
 

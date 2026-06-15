@@ -1,6 +1,6 @@
 # TOMAS-AGI 系统架构设计文档
 
-> 版本：v2.0 | 日期：2026-06-14 | 架构师：高见远（Gao）
+> 版本：v3.0 | 日期：2026-06-14 | 架构师：高见远（Gao）
 
 ---
 
@@ -13,16 +13,13 @@
 | **软件仿真** | Python 3.11 + NumPy + SciPy | 快速验证NASGA数学正确性，NumPy向量化加速谱图计算 |
 | **数据持久化** | SQLite + SQLAlchemy ORM | 7张表存储语料/知识/会话/配置，D:/tomas-data/tomas.db |
 | **后端 API** | Flask + Flask-CORS | RESTful API 服务，知识图谱增删改查，κ-Gate 过滤 |
+| **Token Bridge** | Python + FastAPI | 混合推理引擎（翻译官+作家），置信度路由 |
+| **前端** | React 18 + TypeScript + Vite | 现代化Web界面，D3.js可视化 |
+| **前端测试** | Vitest + React Testing Library | 单元测试，组件测试 |
 | **内核模块** | C（Linux Kernel 5.15+） | 直接访问硬件资源，ioctl接口与用户态通信 |
-| **USCS文件系统** | C（VFS接口） | 实现自定义文件系统必须基于内核VFS |
-| **忆阻器驱动** | C（Linux内核SPI/I2C子系统） | 硬件寄存器级访问 |
 | **GPU加速** | CUDA 12.x（sm_70+） | 八元数乘法大规模并行化 |
-| **FPGA原型** | Verilog（Xilinx Vivado / Intel Quartus） | 可综合RTL，时序约束明确 |
 | **形式化校验** | Lean 4 + Coq 8.17 | Lean 4用于MNQ认知校验，Coq用于双重验证 |
-| **Blueprint生成** | Rust 1.75+ | 类型安全，适合DAG依赖分析 |
-| **Token Bridge API** | Python + FastAPI + Uvicorn | 异步高性能，自动生成OpenAPI文档 |
-| **视觉互搏引擎** | C + OpenCV | 实时视频处理，C库高效 |
-| **构建系统** | Makefile + Kbuild（内核） + Cargo（Rust） | 各语言标准构建工具 |
+| **构建系统** | Makefile + Kbuild（内核） + Vite（前端） | 各语言标准构建工具 |
 
 ### 1.2 整体架构分层
 
