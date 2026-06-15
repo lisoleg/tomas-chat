@@ -12,10 +12,10 @@ interface ToastContextType {
   toasts: Toast[]
   addToast: (toast: Omit<Toast, 'id'>) => void
   removeToast: (id: number) => void
-  success: (title: string, message?: string) => void
-  error: (title: string, message?: string) => void
-  warning: (title: string, message?: string) => void
-  info: (title: string, message?: string) => void
+  success: (title: string, message?: string, duration?: number) => void
+  error: (title: string, message?: string, duration?: number) => void
+  warning: (title: string, message?: string, duration?: number) => void
+  info: (title: string, message?: string, duration?: number) => void
 }
 
 const ToastContext = createContext<ToastContextType | null>(null)
@@ -50,10 +50,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     toasts,
     addToast,
     removeToast,
-    success: (title, message) => addToast({ type: 'success', title, message }),
-    error: (title, message) => addToast({ type: 'error', title, message }),
-    warning: (title, message) => addToast({ type: 'warning', title, message }),
-    info: (title, message) => addToast({ type: 'info', title, message }),
+    success: (title, message, duration?) => addToast({ type: 'success', title, message, duration }),
+    error: (title, message, duration?) => addToast({ type: 'error', title, message, duration }),
+    warning: (title, message, duration?) => addToast({ type: 'warning', title, message, duration }),
+    info: (title, message, duration?) => addToast({ type: 'info', title, message, duration }),
   }
 
   return (

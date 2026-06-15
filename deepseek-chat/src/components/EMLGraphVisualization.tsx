@@ -292,9 +292,10 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
     // 节点/边计数（提前声明，后续多处引用）
     const nodeCount = vertices.length
     const linkCount = filteredEdges.length
-    // 大图时缩小节点半径，但保证最小可读性
+    // 大图分级优化
     const isLargeGraph = nodeCount > 80
     const isMediumGraph = nodeCount > 40
+    const isHugeGraph = nodeCount > 500  // 性能模式阈值
     // 大幅提高节点基础半径，确保文字可读
     const baseRadius = isLargeGraph ? 14 : (isMediumGraph ? 16 : 18)
     const deltaScale = isLargeGraph ? 20 : (isMediumGraph ? 30 : 38)
@@ -372,11 +373,18 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .scale(defaultScale)
       .translate(cw * (1 - defaultScale) / 2, ch * (1 - defaultScale) / 2))
 
-    // 力模拟 —— 根据节点数量动态调整参数（三级优化）
-    // 三级优化：小图(<40)、中图(40-80)、大图(>80)
+    // 力模拟 —— 根据节点数量动态调整参数（四级优化）
+    // 四级优化：小图(<40)、中图(40-80)、大图(80-500)、超大图(>500)
     let linkDist: number, chargeStrength: number, collidePadding: number
     let forceStrength: number, centerStrength: number
-    if (nodeCount > 80) {
+    if (isHugeGraph) {
+      // 超大图（>500）：性能模式，极度紧凑 + 快速冷却
+      linkDist = Math.max(40, 20 + nodeCount * 0.3)
+      chargeStrength = Math.max(-15000, -1000 - nodeCount * 100)
+      collidePadding = 2
+      forceStrength = 0.3
+      centerStrength = 0.05
+    } else if (nodeCount > 80) {
       // 大图：极度紧凑
       linkDist = Math.max(60, 30 + nodeCount * 0.6)
       chargeStrength = Math.max(-8000, -800 - nodeCount * 50)
@@ -405,8 +413,8 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .force('collision', d3.forceCollide().radius((d: any) => d.radius + collidePadding).strength(0.9))
       .force('x', d3.forceX(cw / 2).strength(centerStrength))
       .force('y', d3.forceY(ch / 2).strength(centerStrength))
-      .alphaDecay(nodeCount > 40 ? 0.015 : 0.02)
-      .velocityDecay(nodeCount > 40 ? 0.3 : 0.4)
+      .alphaDecay(isHugeGraph ? 0.05 : (nodeCount > 40 ? 0.015 : 0.02))
+      .velocityDecay(isHugeGraph ? 0.5 : (nodeCount > 40 ? 0.3 : 0.4))
 
     simulationRef.current = simulation
 
@@ -449,7 +457,7 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
       .call(drag(simulation) as any)
 
     // 节点内标签 —— 根据节点数调整显示策略
-    const showStaticLabels = nodes.length <= 60  // 放宽阈值：60个节点以内都显示标签
+    const showStaticLabels = isHugeGraph ? false : (nodes.length <= 60)  // 超大图不显示标签，小图全量显示
     const labelText = g.append('g').attr('class', 'labels')
       .selectAll('text')
       .data(nodes)
@@ -780,10 +788,16 @@ export const EMLGraphVisualization: React.FC<EMLGraphVisualizationProps> = ({
 
       {/* 当前显示标题 */}
       {titleText && (
-        <div className="absolute top-2 left-16 z-10 bg-black/70 backdrop-blur-sm rounded-md px-2.5 py-1 border border-white/10">
+        <div className="absolute top-2 left-16 z-10 bg-black/70 backdrop-blur-sm rounded-md px-2.5 py-1 border border-white/10 flex items-center gap-2">
           <span className="text-[11px] text-amber-300/90 font-medium">
             {titleText}
           </span>
+          {/* 性能模式提示：节点数 > 500 时显示 */}
+          {filteredData && filteredData.vertices.length > 500 && (
+            <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-medium">
+              性能模式
+            </span>
+          )}
         </div>
       )}
 
