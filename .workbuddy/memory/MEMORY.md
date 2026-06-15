@@ -25,6 +25,18 @@
 - DeepSeek API Key: 在 `tomas_agi/sim/.env` 或环境变量 `DEEPSEEK_API_KEY`
 - 默认 base: `https://api.deepseek.com/v1`
 
+## 数据库
+- **路径**: `D:/tomas-data/tomas.db`（SQLite，24.7 GB）
+- **knowledge_triples**: ~72,840,353 行（OwnThink 导入，约 52% 完成）
+- **Schema**: 7 张表 — `api_keys`, `chat_sessions`, `conflict_decisions`, `corpus_entries`, `knowledge_items`, `knowledge_triples`, `settings`
+- **i_weight**: κ-Gate 语义剪枝权重列，范围 [1.0, ~3.0]
+- **原始 CSV**: `D:/ownthink_v2/ownthink_v2.csv`（~140M 行）
+
+## 测试
+- 前端: `deepseek-chat/src/test/Toast.test.tsx` — Vitest + RTL，4/4 通过
+- 后端: `tomas_agi/tests/test_token_bridge.py` — pytest，7/7 通过
+- Python 测试: 系统 Python 3.10 + pytest
+
 ## 前端功能模块 (deepseek-chat/)
 - 置信度反馈: MessageBubble 显示 `📡 EML路由 · XX%` 标签 + 👍/👎 互斥按钮
 - 知识冲突检测: DistillPanel 蒸馏完成后检测同领域语料重叠 → 用户四选一决策 (保留旧/保留新/合并/忽略)
