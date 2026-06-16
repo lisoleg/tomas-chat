@@ -1,6 +1,6 @@
 # TOMAS-AGI 系统架构设计文档
 
-> 版本：v3.0 | 日期：2026-06-14 | 架构师：高见远（Gao）
+> 版本：v3.0 | 日期：2026-06-16 | 架构师：高见远（Gao）
 
 ---
 
@@ -56,7 +56,11 @@ tomas_agi/
 ├── docs/
 │   ├── PRD.md                          # 产品需求文档
 │   ├── ARCHITECTURE.md                 # 本文档
-│   ├── paper.md                        # 学术论文
+│   ├── paper.md                        # 学术论文（含 MemOS 融合层）
+│   ├── paper_memos_fusion.md           # MemOS 融合层技术文档
+│   ├── prd_memos_fusion.md             # MemOS 融合层 PRD
+│   ├── prd_memos_contradiction_v1.1.md # 矛盾检测增强 PRD
+│   ├── architecture_memos_contradiction_v1.1.md # 矛盾检测架构设计
 │   └── USER_GUIDE.md                   # 用户使用手册
 ├── include/
 │   └── tomas/
@@ -75,7 +79,7 @@ tomas_agi/
 │   ├── batch_import.py                  # OwnThink CSV → SQLite 批量导入器
 │   ├── import_ownthink_sqlite.py        # OwnThink 导入器（SQLAlchemy版）
 │   ├── ownthink_importer.py             # OwnThink → EML 格式导入器
-│   ├── token_bridge.py                  # Token Bridge 推理引擎（含κ-Gate）
+│   ├── token_bridge.py                  # Token Bridge 推理引擎（含κ-Gate + MemOS集成）
 │   ├── tomas_sim.py                    # 主仿真器入口
 │   ├── nasga_core.py                   # NASGA核心代数运算（Python）
 │   ├── octonion_py.py                  # 八元数Python实现
@@ -84,7 +88,14 @@ tomas_agi/
 │   ├── xi_c_measure.py                 # ξ_c效能指标测量
 │   ├── llm_distiller.py                 # LLM 知识蒸馏器
 │   ├── token_generator.py              # 神经解码器（LSTM）
-│   └── visualizer.py                   # 仿真结果可视化
+│   ├── visualizer.py                   # 仿真结果可视化
+│   ├── ─── MemOS 融合层 (V1.1) ───
+│   ├── memos_fusion.py                 # TOMAS-MemOS 核心融合层（五点升维）
+│   ├── memos_integration.py            # Token Bridge 集成包装器
+│   ├── psi_anchor.py                   # ψ-锚数据结构与管理器
+│   ├── contradiction_detector.py       # 三层矛盾检测器（否定词/NLP/EML）
+│   ├── dead_zero_mus.py                # 死零/MUS/κ-Snap 机制
+│   └── ─── 数学降维工具箱 ───
 ├── kernel/
 │   ├── tproc_core.c                    # T-Processor主模块
 │   ├── tproc_core.h                    # 主模块头文件
@@ -168,7 +179,9 @@ tomas_agi/
 │   ├── test_tproc.sh                   # 内核模块集成测试
 │   ├── test_token_bridge.py            # API测试
 │   ├── test_mnq.py                     # MNQ校验测试
-│   └── test_fpga.py                    # FPGA仿真测试
+│   ├── test_fpga.py                    # FPGA仿真测试
+│   ├── test_memos.py                   # MemOS 融合层测试（16 cases）
+│   └── test_contradiction.py           # 矛盾检测器测试（11 cases）
 ├── scripts/
 │   ├── build_all.sh                    # 全量构建脚本
 │   ├── run_sim.sh                      # 运行仿真
