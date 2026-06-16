@@ -190,3 +190,101 @@ export function IconFile({ size, ...rest }: IconProps) {
     </svg>
   )
 }
+
+// ── TOMAS UI v2 新增图标 ─────────────────────────────
+
+/** 仪表盘 */
+export function IconDashboard({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  )
+}
+
+/** 地球/世界模型 */
+export function IconGlobe({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
+}
+
+/** 审计日志/盾牌勾选 */
+export function IconAuditLog({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  )
+}
+
+/** 大脑/AI */
+export function IconBrain({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-1.04A2.5 2.5 0 0 1 9.5 2z" />
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-1.04A2.5 2.5 0 0 0 14.5 2z" />
+    </svg>
+  )
+}
+
+/** 记忆/数据库 */
+export function IconMemory({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  )
+}
+
+/** 盾牌/防火墙 */
+export function IconShield({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+
+/** 层次/DIKWP */
+export function IconLayers({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
+      <polyline points="2 15.5 12 22 22 15.5" />
+    </svg>
+  )
+}
+
+/** 火焰/死零 */
+export function IconFlame({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 0-5.5.15-.9.8-1.5 1.5-1.5s1.35.6 1.5 1.5c.22 1.45 1.07 3.36 0 5.5-.5 1-.88 1.62-1 3a2.5 2.5 0 0 0 2.5 2.5c1.38 0 2.5-1.12 2.5-2.5 0-0.75-.33-1.42-.82-1.91" />
+    </svg>
+  )
+}
+
+/** 路由/分叉 */
+export function IconRoute({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="6" cy="6" r="1.5" />
+      <circle cx="18" cy="18" r="1.5" />
+      <circle cx="18" cy="6" r="1.5" />
+      <path d="M6 6l6 6" />
+      <path d="M18 6l-6 6" />
+      <path d="M12 12l6 6" />
+    </svg>
+  )
+}

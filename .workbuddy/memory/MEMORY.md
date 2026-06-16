@@ -29,6 +29,23 @@
 - `dead_zero_mus.py` — **死零/MUS/κ-Snap 机制（2026-06-16 新增）**
 - `nasga_octonion.py` — **NASGA 八元数运算模块（2026-06-16 新增）**
 - `tcci_huashan_test.py` — TCCI-华山测试 v1 独立运行器
+- `memos_fusion.py` — **TOMAS-MemOS 融合层（五点升维 + ContradictionDetector 集成，2026-06-16）**
+- `psi_anchor.py` — ψ-锚数据结构与管理器
+- `memos_integration.py` — Token Bridge 集成包装器
+- `contradiction_detector.py` — 三层矛盾检测器（否定词/NLP/EML）
+- `dikwp_mapper.py` — **DIKWP 五层映射器**
+- `semantic_math.py` — 语义数学运算
+- `dikwp_ac.py` — 人工意识（AC）模块
+- `agent_audit.py` — DAAP 审计代理
+- `dikwp_eml_bridge.py` — DIKWP↔EML 桥接
+- `causet_bridge.py` — **Wolfram超图↔EML桥接（DPO死零守卫 + ℐ-Sprinkling，2026-06-16）**
+- `hodge_operator.py` — TOMAS-WSC融合算子 L+λΠ
+- `semantic_firewall.py` — 输入/输出语义防火墙（6 ADC高风险模式）
+- `palantir_mapper.py` — 本体→EML超图映射（4阶Palantir流水线）
+- `scada_daap.py` — 真实SCADA环境DAAP审计
+- `hyworld_bridge.py` — **HY World 2.0 四阶段管道↔TOMAS EML桥接（2026-06-16）**
+- `sai_tproc.py` — **T-Processor 后审计层（Dead-Zero/MUS/G_ego，2026-06-16）**
+- `spatial_dead_zero.py` — **3D几何物理接地审计（GravityValidator/SpatialMUS/IotaLoss，2026-06-16）**
 
 ## 数据文件
 - 语料: `tomas_agi/data/physics.txt`, `chemistry.txt`, `medicine.txt`
@@ -47,20 +64,35 @@
 - **原始 CSV**: `D:/ownthink_v2/ownthink_v2.csv`（~140M 行）
 
 ## 测试
-- 前端: `deepseek-chat/src/test/Toast.test.tsx` — Vitest + RTL，4/4 通过
-- 后端: `tomas_agi/tests/` — pytest，91 passed + 4 skipped（需要 API Key），0 failed
-  - `test_token_bridge.py`: 7 passed
+- 前端: `deepseek-chat/src/test/` — Vitest + RTL，17/17 通过
+- 后端: `tomas_agi/tests/` — pytest，**366 passed + 2 skipped（需要 API Key），0 failed**
+  - `test_token_bridge.py`: 8 passed
   - `test_eml_dimred.py`: 20 passed
   - `test_router.py`: 27 passed
   - `test_tcci.py`: 15 passed
   - `test_nasga.py`: 17 passed
+  - `test_memos.py`: 16 passed
+  - `test_contradiction.py`: 19 passed
+  - `test_causet_wsc.py`: 57 passed
+  - `test_hyworld_sai.py`: 76 passed
+  - DIKWP/AC 测试: 54 passed
 - Python 测试: 系统 Python 3.10 + pytest
 
 ## 前端功能模块 (deepseek-chat/)
+- **仪表盘 (Dashboard)**: 8 子系统状态卡片 + 活动时间线 + 面板跳转
+- **世界模型 (WorldModelViewer)**: Three.js 3D 场景查看器 — DIKWP 颜色映射 + ℐ值球体大小 + 死零灰色半透明 + 空间边
+- **审计监控 (AuditMonitor)**: T-Proc 死零审计 / Spatial Dead-Zero / G_ego 三标签
+- **记忆浏览器 (MemoryBrowser)**: MemOS 记忆记录搜索 + ψ-锚详情 + MUS 双存指示
+- **防火墙·路由 (LogsAndRouterPanel)**: 语义防火墙日志 + 12 模型路由器双标签
+- **聊天 (ChatArea)**: 保留，支持 EML 路由 + 太乙互博推理链路
+- **蒸馏 (DistillPanel)**: 保留，LLM 蒸馏 + 冲突检测 + 图谱 + DIKWP 饼图
+- **文档 (TechDocs)**: 保留，TOMAS 技术文档
 - 置信度反馈: MessageBubble 显示 `📡 EML路由 · XX%` 标签 + 👍/👎 互斥按钮
-- 知识冲突检测: DistillPanel 蒸馏完成后检测同领域语料重叠 → 用户四选一决策 (保留旧/保留新/合并/忽略)
+- 知识冲突检测: DistillPanel 蒸馏完成后检测同领域语料重叠 → 用户四选一决策
 - 冲突决策持久化: `tomas_conflict_decisions` localStorage key
 - 语料列表: `tomas_corpus_entries` localStorage 持久化
+- **导航**: 侧边栏分三区（核心功能/TOMAS监控/信息），8 面板切换
+- **依赖新增**: three + @types/three (3D 渲染)
 
 ## 常用命令
 ```bash
