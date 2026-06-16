@@ -818,6 +818,120 @@ class DeadZeroMUSGate:
 
         return is_dead, reason
 
+    # ----- Hodge-ℐ 死零截断集成 (章锋2026 文章2附录P) -----
+
+    def apply_hodge_dead_zero(self, i_values: Dict[str, float],
+                              dim: int = 1) -> Dict[str, Any]:
+        """
+        Hodge-ℐ 死零截断 — 基于 TOMAS-WSC 融合算子
+
+        参考: 附录 P.2.3 (章锋, 2026)
+        Π_{[n],σσ} → ∞ when I(σ) → 0 ⇒ 自动压制低ℐ通道
+
+        Args:
+            i_values: {edge_id: I_value}
+            dim: 当前维度
+
+        Returns:
+            {rejected_ids, active_ids, hodge_penalties}
+        """
+        epsilon = 1e-6
+        rejected = {}
+        active = {}
+        penalties = {}
+
+        for eid, i_val in i_values.items():
+            penalty = 1.0 / max(i_val, epsilon)
+            penalties[eid] = penalty
+
+            if i_val < self.dead_zero_checker.theta_dead:
+                rejected[eid] = {"i_val": i_val, "penalty": penalty}
+            else:
+                active[eid] = {"i_val": i_val, "penalty": penalty}
+
+        # 记录 Hodge-ℐ 事件
+        if rejected:
+            self.psi_audit_log.append({
+                'timestamp': __import__('time').strftime("%Y-%m-%dT%H:%M:%S"),
+                'event': 'HODGE_DEAD_ZERO',
+                'dim': dim,
+                'rejected_count': len(rejected),
+                'rejected_ids': list(rejected.keys()),
+                'theta_dead': self.dead_zero_checker.theta_dead,
+            })
+
+        return {
+            "rejected": rejected,
+            "active": active,
+            "penalties": penalties,
+            "rejection_rate": len(rejected) / max(len(i_values), 1),
+        }
+
+    def compute_hodge_spectral_entropy(self, i_values: Dict[str, float]) -> float:
+        """
+        计算 Hodge 谱熵 — 监测度类稳定性
+
+        参考: 文章2 §2.1 (章锋, 2026)
+        低熵 → 高度有序 (如"阳明病")
+        高熵 → 度类混合态 (如"少阳病枢机不利")
+        熵突变 → 传变/顿悟(CRD)
+        """
+        import math
+        total = sum(abs(v) for v in i_values.values()) + 1e-6
+        entropy = -sum(
+            (abs(v) / total) * math.log(abs(v) / total + 1e-6)
+            for v in i_values.values()
+        )
+        return entropy
+
+    # ----- Causet DPO 守卫 (章锋2026 文章1附录D) -----
+
+    def dpo_rule_match_guard(self, pattern_edges: List[Dict],
+                             hypergraph_state: Dict = None) -> Tuple[bool, str]:
+        """
+        DPO Match 死零守卫 — rule_match_allowed 伪代码实现
+
+        基于文章1附录D (章锋, 2026):
+          1. 计算匹配模式的总ℐ (∑ℐ matched edges)
+          2. ℐ < θ_dead ⇒ REJECT_RULE_MATCH
+          3. MUS标志检查 ⇒ 需 ψ-锚决议
+
+        Args:
+            pattern_edges: 匹配的子超图边 [{eid, nodes, i_val}, ...]
+            hypergraph_state: 超图状态 (含 _mus_flags)
+
+        Returns:
+            (allowed, reason)
+        """
+        if not pattern_edges:
+            return False, "REJECT: 空匹配模式"
+
+        # 计算总 ℐ
+        total_i = sum(e.get('i_val', 0) for e in pattern_edges)
+        avg_i = total_i / max(len(pattern_edges), 1)
+
+        # 死零检查
+        if avg_i < self.dead_zero_checker.theta_dead:
+            logger.info(
+                f"[DPO Guard] REJECT: avg_I={avg_i:.4f} < θ={self.dead_zero_checker.theta_dead}"
+            )
+            self.psi_audit_log.append({
+                'timestamp': __import__('time').strftime("%Y-%m-%dT%H:%M:%S"),
+                'event': 'DPO_REJECT',
+                'avg_i': avg_i,
+                'theta_dead': self.dead_zero_checker.theta_dead,
+                'pattern_edges': [e.get('eid', '?') for e in pattern_edges],
+            })
+            return False, f"REJECT_RULE_MATCH: I={avg_i:.4f} < θ={self.dead_zero_checker.theta_dead}"
+
+        # MUS 检查
+        if hypergraph_state:
+            mus_flags = hypergraph_state.get('_mus_flags', {})
+            if mus_flags.get('active') and not mus_flags.get('allow_coarse_graining'):
+                return False, "MUS_BLOCKED: 需 ψ-锚明确决议后再重写"
+
+        return True, f"ALLOWED: I={avg_i:.4f} >= θ={self.dead_zero_checker.theta_dead}"
+
 
 # ============================================================
 # 测试

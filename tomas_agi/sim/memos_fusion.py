@@ -933,6 +933,183 @@ class TOMAS_Mem_OS_Fusion:
         )
         return affected
 
+    # ----- 语义防火墙钩子 (章锋2026) -----
+
+    def install_semantic_firewall(self, firewall) -> 'TOMAS_Mem_OS_Fusion':
+        """
+        安装语义防火墙
+
+        基于 semantic_firewall.py 的 SemanticFirewall
+
+        Args:
+            firewall: SemanticFirewall 实例
+        """
+        self._firewall = firewall
+        logger.info("[MemOS] 语义防火墙已安装")
+        return self
+
+    def firewall_check_input(self, query: str,
+                             dikwp_layer: str = "I") -> Tuple:
+        """
+        防火墙输入检查 — 在推理前调用
+
+        Returns:
+            (verdict, details)
+        """
+        if not hasattr(self, '_firewall') or not self._firewall:
+            from tomas_agi.sim.semantic_firewall import FirewallVerdict
+            return FirewallVerdict.ALLOW, {"note": "防火墙未安装"}
+
+        return self._firewall.inspect_input(query, dikwp_layer)
+
+    def firewall_check_output(self, response: str, query: str = "",
+                              eml_context: Dict = None,
+                              expected_layer: str = "K") -> Tuple:
+        """
+        防火墙输出检查 — 在返回响应前调用
+
+        Returns:
+            (verdict, details)
+        """
+        if not hasattr(self, '_firewall') or not self._firewall:
+            from tomas_agi.sim.semantic_firewall import FirewallVerdict
+            return FirewallVerdict.ALLOW, {"note": "防火墙未安装"}
+
+        return self._firewall.inspect_output(
+            response, query, eml_context, expected_layer
+        )
+
+    def get_firewall_logs(self, direction: str = None) -> List:
+        """获取防火墙日志"""
+        if not hasattr(self, '_firewall') or not self._firewall:
+            return []
+        return self._firewall.get_logs(direction)
+
+    def get_firewall_stats(self):
+        """获取防火墙统计"""
+        if not hasattr(self, '_firewall') or not self._firewall:
+            return None
+        return self._firewall.get_stats()
+
+    # ----- Palantir EML 摄入 (章锋2026) -----
+
+    def ingest_palantir_ontology(self, palantir_mapper) -> Dict[str, Any]:
+        """
+        从 Palantir 本体映射器摄入 EML 图
+
+        基于 palantir_mapper.py:
+          Ontology实体 → EML顶点
+          Ontology关系 → EML超边 (含 ℐ-权重和死零过滤)
+
+        Args:
+            palantir_mapper: PalantirEMLMapper 实例 (已加载本体)
+
+        Returns:
+            {ingested_vertices, ingested_edges, dead_zero_rejected}
+        """
+        eml_graph = palantir_mapper.map_to_eml()
+        vertices = eml_graph.get('vertices', [])
+        edges = eml_graph.get('edges', [])
+
+        ingested_v = 0
+        ingested_e = 0
+        dz_rejected = 0
+
+        # 摄入顶点 → 作为特殊记忆记录存储
+        for v in vertices:
+            vid = v.get('id', f"v-{ingested_v}")
+            record = MemoryRecord(
+                edge_id=vid,
+                concept_pair=(v.get('name', vid), ''),
+                relation='EML_VERTEX',
+                i_value=v.get('i_val', v.get('confidence', 0.5)),
+                asym=0.0,
+                psi_anchor=None,
+                meta={'type': 'vertex', 'dikwp': v.get('dikwp', 'K')},
+            )
+            self.store.write(record, overwrite=True)
+            ingested_v += 1
+
+        # 摄入超边 → MemoryStore
+        for e in edges:
+            if e.get('dead_zero'):
+                dz_rejected += 1
+                logger.debug(f"[Palantir摄入] DEAD_ZERO: {e['id']}")
+                continue
+
+            nodes = e.get('nodes', ['?', '?'])
+            source = e.get('source_name', nodes[0] if len(nodes) > 0 else '?')
+            target = e.get('target_name', nodes[1] if len(nodes) > 1 else '?')
+            record = MemoryRecord(
+                edge_id=e.get('id', f"e-{ingested_e}"),
+                concept_pair=(source, target),
+                relation=e.get('relation_type', 'RELATED'),
+                i_value=e.get('i_val', 0.5),
+                asym=e.get('asym', 0.0),
+                psi_anchor=None,
+                meta={
+                    'type': 'edge',
+                    'source': f"palantir:{palantir_mapper.ontology.name if palantir_mapper.ontology else 'unknown'}",
+                    'dikwp_layer': e.get('dikwp_layer', 'K'),
+                },
+            )
+            self.store.write(record, overwrite=True)
+            ingested_e += 1
+
+        result = {
+            "ingested_vertices": ingested_v,
+            "ingested_edges": ingested_e,
+            "dead_zero_rejected": dz_rejected,
+            "ontology_name": palantir_mapper.ontology.name if palantir_mapper.ontology else None,
+            "dikwp_distribution": eml_graph.get('dikwp_layers', {}),
+        }
+
+        logger.info(
+            f"[Palantir摄入] V={ingested_v} E={ingested_e} DZ={dz_rejected} "
+            f"DIKWP={eml_graph.get('dikwp_layers', {})}"
+        )
+        return result
+
+    def get_dikwp_pie_data(self) -> Dict:
+        """
+        获取 DIKWP 饼图数据 — 供前端饼图使用
+
+        Returns:
+            {layers: [{layer, name, count, percentage}], total_edges}
+        """
+        all_records = self.store.get_all()
+        if not all_records:
+            return {"layers": [], "total_edges": 0}
+
+        thresholds = {
+            'D': (0.0, 0.15), 'I': (0.15, 0.35),
+            'K': (0.35, 0.65), 'W': (0.65, 0.85), 'P': (0.85, 1.0),
+        }
+        layer_names = {
+            'D': '数据 Data', 'I': '信息 Info',
+            'K': '知识 Knowledge', 'W': '智慧 Wisdom', 'P': '目的 Purpose',
+        }
+
+        counts = {layer: 0 for layer in thresholds}
+        for r in all_records:
+            for layer, (lo, hi) in thresholds.items():
+                if lo <= r.i_value < hi or (layer == 'P' and r.i_value >= hi):
+                    counts[layer] += 1
+                    break
+
+        total = sum(counts.values()) or 1
+        layers = [
+            {
+                "layer": layer,
+                "name": layer_names[layer],
+                "count": counts[layer],
+                "percentage": round(counts[layer] / total * 100, 1),
+            }
+            for layer in ['D', 'I', 'K', 'W', 'P']
+        ]
+
+        return {"layers": layers, "total_edges": total}
+
 
 # 导出
 __all__ = ["TOMAS_Mem_OS_Fusion", "MemoryStore", "MemoryRecord", "PsiAnchor", "PsiAnchorManager"]

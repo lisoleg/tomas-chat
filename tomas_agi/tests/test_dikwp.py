@@ -779,7 +779,11 @@ class TestDIKWPIntegration:
         except ImportError:
             pytest.skip("MemOS 模块依赖不完整")
 
-        fusion = TOMAS_Mem_OS_Fusion(theta_dead=0.15, enable_mus=False,
+        import tempfile, os
+        fd, store_path = tempfile.mkstemp(suffix='.json', prefix='dikwp_test_')
+        os.close(fd)
+        fusion = TOMAS_Mem_OS_Fusion(store_path=store_path,
+                                     theta_dead=0.15, enable_mus=False,
                                      enable_psi=False, enable_kappa_gate=False)
         profile = fusion.get_dikwp_layer_profile()
         assert profile.get('empty') is True
@@ -791,7 +795,11 @@ class TestDIKWPIntegration:
         except ImportError:
             pytest.skip("MemOS 模块依赖不完整")
 
-        fusion = TOMAS_Mem_OS_Fusion(theta_dead=0.15, enable_mus=False,
+        import tempfile, os
+        fd, store_path = tempfile.mkstemp(suffix='.json', prefix='dikwp_test_')
+        os.close(fd)
+        fusion = TOMAS_Mem_OS_Fusion(store_path=store_path,
+                                     theta_dead=0.15, enable_mus=False,
                                      enable_psi=False, enable_kappa_gate=False)
         result = fusion.check_dikwp_semantic_closure("A", "导致", "B")
         assert result['is_derivable'] is False
