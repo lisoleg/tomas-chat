@@ -840,6 +840,109 @@ def itot_kpi():
 # 启动入口
 # ═══════════════════════════════════════════════════════════
 
+
+# ==================== T-Processor v1.0 API ====================
+
+def _get_tprocessor():
+    """Lazy-init T-Processor v1.0 simulator."""
+    if not hasattr(app, '_tproc'):
+        try:
+            from tprocessor_sim import TProcessorV1
+            app._tproc = TProcessorV1(crossbar_shape=(128, 128))
+        except Exception:
+            app._tproc = None
+    return app._tproc
+
+
+@app.route("/api/tprocessor/tick", methods=["POST"])
+def tproc_tick():
+    try:
+        import numpy as np
+        data = request.json or {}
+        tproc = _get_tprocessor()
+        if tproc is None:
+            return jsonify({"success": False, "error": "T-Processor unavailable"}), 503
+        v_in = np.array(data.get("v_in", [0.5] * 128), dtype=np.float32)
+        meta = data.get("meta", None)
+        result = tproc.tick(v_in, meta)
+        return jsonify({"success": True, "data": {
+            "cycle": result["cycle"],
+            "i_max": float(result["i_out"].max()) if hasattr(result["i_out"], "max") else 0.0,
+            "dead_zero_fused": result["dead_zero_fused"],
+            "mus_active": result["mus_active"],
+            "scheduler": result["scheduler"],
+            "energy": result["energy"],
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/tprocessor/load_eml", methods=["POST"])
+def tproc_load_eml():
+    try:
+        data = request.json or {}
+        tproc = _get_tprocessor()
+        if tproc is None:
+            return jsonify({"success": False, "error": "T-Processor unavailable"}), 503
+        edges = data.get("edges", [])
+        from tprocessor_sim import HyperEdgeState
+        eml_edges = [HyperEdgeState(e["src"], e["dst"], e["weight"]) for e in edges]
+        tproc.load_eml(eml_edges)
+        return jsonify({"success": True, "data": {"loaded": len(eml_edges)}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/tprocessor/stats", methods=["GET"])
+def tproc_stats():
+    try:
+        tproc = _get_tprocessor()
+        if tproc is None:
+            return jsonify({"success": True, "data": {"status": "unavailable"}})
+        return jsonify({"success": True, "data": tproc.get_stats()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== T-Shield API ====================
+
+def _get_tshield():
+    """Lazy-init T-Shield wrapper."""
+    if not hasattr(app, '_tshield'):
+        try:
+            from tshield_wrapper import TShieldWrapper
+            app._tshield = TShieldWrapper(stub_detector)
+        except Exception:
+            app._tshield = None
+    return app._tshield
+
+
+@app.route("/api/tshield/infer", methods=["POST"])
+def tshield_infer():
+    try:
+        import numpy as np
+        data = request.json or {}
+        shield = _get_tshield()
+        if shield is None:
+            return jsonify({"success": False, "error": "T-Shield unavailable"}), 503
+        img = np.array(data.get("img", []), dtype=np.uint8)
+        context = data.get("context", {})
+        depth_config = data.get("depth_config", "auto")
+        result = shield.infer(img, context=context, depth_config=depth_config)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/tshield/demo", methods=["GET"])
+def tshield_demo():
+    try:
+        from tshield_wrapper import demo_tshield
+        demo_tshield()
+        return jsonify({"success": True, "data": {"status": "demo run complete"}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 if __name__ == "__main__":
     from models import get_engine
     get_engine()
