@@ -780,6 +780,159 @@ class TOMAS_Mem_OS_Fusion:
         """获取 ADC 反欺骗指标"""
         return self.dead_zero_gate.get_adc_report()
 
+    # ----- DIKWP 语义闭合接口 (章锋2026 文章1) -----
+
+    def get_dikwp_layer_profile(self) -> Dict[str, Any]:
+        """
+        获取 DIKWP 分层画像
+
+        按 ℐ-密度将全部记忆分配到 D/I/K/W/P 五层:
+          D(ℐ≈0) → 原始感知数据
+          I(ℐ~0.1-0.3) → 初步语义关联
+          K(ℐ~0.3-0.7) → 稳定知识子图
+          W(ℐ~0.7-0.9) → 跨域决策智慧
+          P(ℐ~1.0) → ψ-锚定边界
+
+        Returns:
+            {layer: {count, avg_i, ratio, ...}}
+        """
+        all_records = self.store.get_all()
+        if not all_records:
+            return {"empty": True, "message": "记忆库为空"}
+
+        layers = {'D': [], 'I': [], 'K': [], 'W': [], 'P': []}
+        thresholds = {
+            'D': (0.0, 0.1), 'I': (0.1, 0.35),
+            'K': (0.35, 0.7), 'W': (0.7, 0.9), 'P': (0.9, 1.0),
+        }
+
+        for record in all_records:
+            i_val = record.i_value
+            for layer, (lo, hi) in thresholds.items():
+                if lo <= i_val < hi or (layer == 'P' and i_val >= hi):
+                    layers[layer].append(i_val)
+                    break
+
+        total = len(all_records)
+        profile = {}
+        for layer, i_vals in layers.items():
+            profile[layer] = {
+                'label': {'D': '数据层', 'I': '信息层', 'K': '知识层',
+                          'W': '智慧层', 'P': '意图层'}[layer],
+                'count': len(i_vals),
+                'ratio': round(len(i_vals) / max(total, 1), 4),
+                'avg_i': round(sum(i_vals) / max(len(i_vals), 1), 4) if i_vals else 0,
+            }
+
+        return {
+            'total': total,
+            'layers': profile,
+            'dominant_layer': max(profile, key=lambda k: profile[k]['count']),
+        }
+
+    def check_dikwp_semantic_closure(
+        self, subject: str, predicate: str, object_: str
+    ) -> Dict[str, Any]:
+        """
+        检查目标命题在现有记忆中的语义闭合性
+
+        验证 DIKWP 层间的语义传递链是否可闭合:
+          若记忆中有 A→B 和 B→C, 则 A→C 应语义可推导
+
+        Args:
+            subject: 目标主语
+            predicate: 目标谓词
+            object_: 目标宾语
+
+        Returns:
+            {is_derivable, confidence, gaps, ...}
+        """
+        all_records = self.store.get_all()
+
+        # 从记忆中提取三元组
+        triples = []
+        i_values = {}
+        for idx, record in enumerate(all_records):
+            # 从 relation 字段解析 (subject, predicate, object)
+            rel = record.relation
+            parts = rel.replace('→', ',').replace('->', ',').split(',')
+            if len(parts) >= 2:
+                s = parts[0].strip()
+                o = parts[-1].strip()
+                p = '→'.join(parts[1:-1]).strip() if len(parts) > 2 else '关联'
+                triples.append((s, p, o))
+                i_values[idx] = record.i_value
+
+        if not triples:
+            return {'is_derivable': False, 'confidence': 0,
+                    'gaps': ['记忆库中无可提取的三元组'], 'explanation': '语义闭合检查无数据'}
+
+        # 使用语义闭合检查器
+        try:
+            from .semantic_math import SemanticClosure
+        except ImportError:
+            import sys, os
+            sys.path.insert(0, os.path.dirname(__file__))
+            from semantic_math import SemanticClosure  # type: ignore
+
+        closure = SemanticClosure()
+        result = closure.check_closure(
+            statements=triples,
+            target=(subject, predicate, object_),
+            i_values=i_values,
+        )
+
+        return {
+            'is_derivable': result.is_derivable,
+            'confidence': result.confidence,
+            'i_conserved': result.i_conserved,
+            'derivation_path': result.explanation,
+            'gaps': result.gaps,
+        }
+
+    def apply_dikwp_bidirectional_feedback(
+        self, source_layer: str, target_layer: str, gradient: float
+    ) -> List[Dict]:
+        """
+        应用 DIKWP 层间双向反馈
+
+        基于文章1: W→K 抑制错误权重, P→全层 ψ-锚定
+
+        Args:
+            source_layer: 反馈来源 (D/I/K/W/P)
+            target_layer: 反馈目标 (D/I/K/W/P)
+            gradient: ℐ-梯度, 正=增强, 负=抑制
+
+        Returns:
+            受影响的记忆列表
+        """
+        all_records = self.store.get_all()
+        affected = []
+
+        thresholds = {
+            'D': (0.0, 0.1), 'I': (0.1, 0.35),
+            'K': (0.35, 0.7), 'W': (0.7, 0.9), 'P': (0.9, 1.0),
+        }
+        target_lo, target_hi = thresholds.get(target_layer.upper(), (0, 1))
+
+        for record in all_records:
+            i_val = record.i_value
+            if target_lo <= i_val < target_hi or (target_layer == 'P' and i_val >= target_hi):
+                old_i = record.i_value
+                record.i_value = max(0.0, min(1.0, record.i_value + gradient))
+                affected.append({
+                    'edge_id': record.edge_id,
+                    'old_i': round(old_i, 4),
+                    'new_i': round(record.i_value, 4),
+                    'delta': round(gradient, 4),
+                })
+
+        logger.info(
+            f"[DIKWP反馈] {source_layer}→{target_layer} ∇ℐ={gradient:+.3f}, "
+            f"影响 {len(affected)} 条记忆"
+        )
+        return affected
+
 
 # 导出
 __all__ = ["TOMAS_Mem_OS_Fusion", "MemoryStore", "MemoryRecord", "PsiAnchor", "PsiAnchorManager"]

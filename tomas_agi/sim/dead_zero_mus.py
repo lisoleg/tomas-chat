@@ -745,6 +745,79 @@ class DeadZeroMUSGate:
             'raw_metrics': dict(self.adc_metrics),
         }
 
+    # ----- DIKWP 层上下文接口 (章锋2026 文章1) -----
+
+    def set_dikwp_layer_context(self, layer: str, i_density: float):
+        """
+        设置 DIKWP 层上下文
+
+        基于章锋(2026) DIKWP→EML 同构映射:
+          D(ℐ≈0)→原始节点, I(ℐ~0.1-0.3)→激活超边,
+          K(ℐ~0.3-0.7)→稳定子图, W(ℐ~0.7-0.9)→跨域协调,
+          P(ℐ~1.0)→ψ-锚点
+
+        Args:
+            layer: DIKWP 层 (D/I/K/W/P)
+            i_density: ℐ-密度
+        """
+        valid_layers = {'D', 'I', 'K', 'W', 'P'}
+        layer = layer.upper()
+        if layer not in valid_layers:
+            raise ValueError(f"无效 DIKWP 层: {layer}, 有效: {valid_layers}")
+
+        label_cn = {'D': '数据层', 'I': '信息层', 'K': '知识层', 'W': '智慧层', 'P': '意图层'}[layer]
+
+        self.psi_audit_log.append({
+            'timestamp': __import__('time').strftime("%Y-%m-%dT%H:%M:%S"),
+            'event': 'DIKWP_LAYER_CONTEXT',
+            'layer': layer,
+            'label': label_cn,
+            'i_density': i_density,
+        })
+
+        logger.debug(f"[DeadZeroMUSGate] DIKWP 上下文: {label_cn} ℐ={i_density:.3f}")
+
+    def check_dead_zero_dikwp(self, i_value: float, layer: str) -> Tuple[bool, str]:
+        """
+        DIKWP 感知的死零检测
+
+        不同 DIKWP 层有不同容忍度:
+          - P 层 (ℐ~1.0): 极高死零阈值, 无依据直接拒绝
+          - W 层 (ℐ~0.7-0.9): 高阈值
+          - K 层 (ℐ~0.3-0.7): 中阈值
+          - I 层 (ℐ~0.1-0.3): 低阈值
+          - D 层 (ℐ≈0): 几乎不触发死零
+
+        Args:
+            i_value: ℐ-值
+            layer: DIKWP 层
+
+        Returns:
+            (is_dead, reason)
+        """
+        # 根据 DIKWP 层级调整死零阈值
+        layer_thresholds = {
+            'D': self.dead_zero_checker.theta_dead * 0.3,   # 数据层宽松
+            'I': self.dead_zero_checker.theta_dead * 0.6,   # 信息层较宽松
+            'K': self.dead_zero_checker.theta_dead * 1.0,   # 知识层标准
+            'W': self.dead_zero_checker.theta_dead * 1.5,   # 智慧层严格
+            'P': self.dead_zero_checker.theta_dead * 2.0,   # 意图层最严格
+        }
+
+        threshold = layer_thresholds.get(layer.upper(), self.dead_zero_checker.theta_dead)
+        is_dead = i_value < threshold
+
+        reason = (
+            f"[DIKWP-{layer.upper()}死零] ℐ={i_value:.3f} < θ_{layer.upper()}={threshold:.3f}, "
+            f"证据不足以支持{layer.upper()}层断言"
+        ) if is_dead else ""
+
+        if is_dead:
+            self.set_dikwp_layer_context(layer, i_value)
+            logger.warning(f"[DeadZeroMUSGate] {reason}")
+
+        return is_dead, reason
+
 
 # ============================================================
 # 测试
