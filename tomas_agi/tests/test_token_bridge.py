@@ -70,12 +70,15 @@ class TestTokenBridge:
     
     def test_load_eml(self):
         """测试加载 EML 图"""
-        result = self.bridge.load_eml("data/physics_distilled.eml")
-        # 可能文件不存在，跳过
-        if result is None:
+        # 使用项目根目录下的绝对路径
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        eml_path = os.path.join(project_root, "data", "physics_distilled.eml")
+        try:
+            self.bridge.load_eml(eml_path)
+        except FileNotFoundError:
             pytest.skip("EML file not found")
-        assert result is not None
-        assert self.bridge.trained is True
+        # load_eml 构建 ϕ 索引但不训练权重，trained 仅标记 encoder/decoder 训练完成
+        assert len(self.bridge.loader.vertices) > 0
     
     def test_encode(self):
         """测试编码概念为 φ 向量"""
