@@ -433,6 +433,83 @@ class TOMAS_Mem_OS_Fusion:
         # 调用矛盾检测器（三层架构）
         return self.contradiction_detector.is_contradictory(relation1, relation2)
     
+    def _find_contradictory_memories(
+        self,
+        concept_pair: Tuple[str, str],
+        relation: str,
+        asym: float,
+    ) -> List[MemoryRecord]:
+        """
+        查找与当前边矛盾的已有记忆
+
+        两阶段检索：
+        (A) 精确概念对匹配 → 直接矛盾检测
+        (B) 单概念共享匹配 → 用每个概念名做模糊检索，检测跨概念对矛盾（如"心→神明"与"脑→神明"）
+
+        Args:
+            concept_pair: 当前边的概念对
+            relation: 当前边的关系文本
+            asym: 当前边的 asym 值
+
+        Returns:
+            矛盾记忆列表（非空时表示 MUS 应激活）
+        """
+        candidates = []
+
+        # 阶段 A: 精确概念对匹配
+        exact_matches = self.store.retrieve_by_concepts(list(concept_pair))
+        for ex in exact_matches:
+            if self._is_mus_match(ex, relation, asym):
+                candidates.append(ex)
+
+        # 阶段 B: 单概念共享匹配（跨概念对 MUS）
+        if not candidates:
+            seen_ids = set()
+            for concept in concept_pair:
+                shared = self.store.retrieve(concept, top_k=20)
+                for ex in shared:
+                    if ex.edge_id in seen_ids:
+                        continue
+                    seen_ids.add(ex.edge_id)
+                    # 跳过完全相同的概念对（已由阶段A覆盖）
+                    if set(ex.concept_pair) == set(concept_pair):
+                        continue
+                    # 检查是否共享至少一个概念
+                    if not (set(ex.concept_pair) & set(concept_pair)):
+                        continue
+                    if self._is_mus_match(ex, relation, asym):
+                        candidates.append(ex)
+
+        return candidates
+
+    def _is_mus_match(
+        self,
+        existing: MemoryRecord,
+        relation: str,
+        asym: float,
+    ) -> bool:
+        """
+        判断一条已有记忆是否与当前写入构成 MUS 矛盾
+
+        Args:
+            existing: 已有记忆记录
+            relation: 当前关系文本
+            asym: 当前 asym 值
+
+        Returns:
+            是否矛盾
+        """
+        # 条件1: asym 符号相反 → 直接矛盾
+        if abs(existing.asym) > 0.01 and abs(asym) > 0.01:
+            if (existing.asym > 0 and asym < 0) or (existing.asym < 0 and asym > 0):
+                return True
+
+        # 条件2: 三层矛盾检测器判定
+        if self._is_contradictory(relation, existing.relation):
+            return True
+
+        return False
+
     def write_memory(self, user_input: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         写入记忆（五步流程）
@@ -465,25 +542,12 @@ class TOMAS_Mem_OS_Fusion:
         overwrite = True
         mus_active = False
         if self.enable_mus:
-            # 检查是否与存储中的现有记忆矛盾
-            existing = self.store.retrieve_by_concepts(list(concept_pair))
+            existing = self._find_contradictory_memories(concept_pair, relation, asym)
             if existing:
-                for ex in existing:
-                    # 如果现有记忆的 asym 与当前 asym 符号相反 → 矛盾
-                    if abs(ex.asym) > 0.01 and abs(asym) > 0.01:
-                        if (ex.asym > 0 and asym < 0) or (ex.asym < 0 and asym > 0):
-                            mus_active = True
-                            overwrite = False
-                            break
-                    # 简单矛盾检测：关系文本矛盾
-                    if self._is_contradictory(relation, ex.relation):
-                        mus_active = True
-                        asym = 0.5  # 标记为正 asym
-                        overwrite = False
-                        break
-                
-                if mus_active:
-                    logger.info(f"MUS 激活：{concept_pair} 存在矛盾记忆")
+                mus_active = True
+                overwrite = False
+                asym = 0.5  # 标记为正 asym
+                logger.info(f"MUS 激活：{concept_pair} 存在矛盾记忆")
         
         # Step 5: 附加 ψ-锚
         psi_anchor = None

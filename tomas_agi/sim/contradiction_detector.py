@@ -158,32 +158,40 @@ class ContradictionDetector:
     def _extract_spo(self, relation: str) -> SPO:
         """
         提取主谓宾三元组（简化版）
-        
+
         使用 jieba 分词 + 规则提取：
         - 主语：通常是第一个词（或 "的" 前的词）
         - 谓语：通常是动词或 "主"/"是"/"为" 等
         - 宾语：通常是最后一个词（或 "的" 后的词）
-        
+
+        增强：对 "X主Y，..." 模式，宾语截断到逗号/句号前
+        对 "X为Y，..." 同理
+
         Args:
             relation: 关系文本（如 "心主神明"）
-            
+
         Returns:
             SPO 三元组
         """
-        # 简化版：使用规则提取（不依赖 jieba）
-        # 适用于中文三字符结构："主语+谓语+宾语"
-        
-        if len(relation) >= 3:
+        # 预处理：截断到第一个标点，避免宾语包含后缀描述
+        clean_relation = relation
+        for sep in ("，", "。", "；", "：", ",", ".", ";"):
+            idx = relation.find(sep)
+            if idx > 2:  # 确保至少有 3 个字符的主体
+                clean_relation = relation[:idx]
+                break
+
+        if len(clean_relation) >= 3:
             # 三字符结构：ABC → 主语=A, 谓语=B, 宾语=C
-            subject = relation[0]
-            predicate = relation[1]
-            obj = relation[2:]
+            subject = clean_relation[0]
+            predicate = clean_relation[1]
+            obj = clean_relation[2:]
         else:
             # 回退：整个关系作为主语
-            subject = relation
+            subject = clean_relation
             predicate = ""
             obj = ""
-        
+
         return SPO(subject=subject, predicate=predicate, object=obj)
     
     def _layer2_nlp(self, relation1: str, relation2: str) -> bool:
