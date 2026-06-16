@@ -932,6 +932,135 @@ class DeadZeroMUSGate:
 
         return True, f"ALLOWED: I={avg_i:.4f} >= θ={self.dead_zero_checker.theta_dead}"
 
+    # ----- 空间死零审计 (章锋2026 文章2·HY World) -----
+
+    def apply_spatial_dead_zero(
+        self,
+        objects: List[Dict[str, Any]],
+        ground_y: float = 0.0,
+        float_threshold: float = 0.15,
+    ) -> Dict[str, Any]:
+        """
+        空间死零审计 — 对 3D 场景物体进行物理接地检查
+
+        基于 spatial_dead_zero.py:
+          1. 重力校验: 检测悬浮物体 (无支撑)
+          2. 死零标记: ℐ < θ_dead → DEAD_ZERO
+          3. 悬浮校正: 自动吸附地面
+
+        Args:
+            objects: 物体列表 [{"id", "position": (x,y,z), "scale": (sx,sy,sz), "i_value"}, ...]
+            ground_y: 地面 Y 坐标
+            float_threshold: 悬浮判定阈值 (m)
+
+        Returns:
+            {grounded, floating, dead_zero, corrected, details}
+        """
+        grounded = 0
+        floating = 0
+        dead_zero = 0
+        corrected = []
+        details = []
+
+        for obj in objects:
+            pos = obj.get("position", (0, 0, 0))
+            scale = obj.get("scale", (1, 1, 1))
+            i_val = obj.get("i_value", 0.5)
+            obj_id = obj.get("id", "?")
+
+            # 计算底部离地距离
+            bottom_y = pos[1] - scale[1] / 2
+            ground_dist = bottom_y - ground_y
+
+            # 死零检查
+            if i_val < self.dead_zero_checker.theta_dead:
+                dead_zero += 1
+                details.append({
+                    "object_id": obj_id,
+                    "issue": "DEAD_ZERO",
+                    "i_value": i_val,
+                    "theta_dead": self.dead_zero_checker.theta_dead,
+                })
+                obj_copy = dict(obj)
+                obj_copy["_dead_zero"] = True
+                corrected.append(obj_copy)
+                continue
+
+            # 悬浮检测
+            if ground_dist > float_threshold:
+                floating += 1
+                details.append({
+                    "object_id": obj_id,
+                    "issue": "FLOATING",
+                    "ground_distance": round(ground_dist, 3),
+                    "i_value": i_val,
+                })
+                # 自动校正: 吸附地面
+                obj_copy = dict(obj)
+                new_pos = list(pos)
+                new_pos[1] = ground_y + scale[1] / 2
+                obj_copy["position"] = tuple(new_pos)
+                obj_copy["_snapped_to_ground"] = True
+                corrected.append(obj_copy)
+            else:
+                grounded += 1
+                corrected.append(dict(obj))
+
+        logger.info(
+            f"[空间死零] {len(objects)} 物体: "
+            f"G={grounded} F={floating} DZ={dead_zero}"
+        )
+        return {
+            "total": len(objects),
+            "grounded": grounded,
+            "floating": floating,
+            "dead_zero": dead_zero,
+            "corrected": corrected,
+            "details": details,
+        }
+
+    def check_physical_grounding(
+        self,
+        obj_a: Dict[str, Any],
+        obj_b: Dict[str, Any],
+    ) -> Tuple[bool, str]:
+        """
+        检查两个物体之间是否存在物理支撑关系
+
+        Args:
+            obj_a: 上方物体
+            obj_b: 下方物体
+
+        Returns:
+            (is_supported, reason)
+        """
+        pos_a = obj_a.get("position", (0, 0, 0))
+        scale_a = obj_a.get("scale", (1, 1, 1))
+        pos_b = obj_b.get("position", (0, 0, 0))
+        scale_b = obj_b.get("scale", (1, 1, 1))
+
+        # A 底部 vs B 顶部
+        a_bottom = pos_a[1] - scale_a[1] / 2
+        b_top = pos_b[1] + scale_b[1] / 2
+        gap = a_bottom - b_top
+
+        if gap < 0:
+            return False, f"穿透: gap={gap:.3f}m (A穿过B)"
+
+        if gap > 0.15:
+            return False, f"无支撑: gap={gap:.3f}m > 0.15m"
+
+        # XZ 平面重叠
+        for dim in [0, 2]:
+            min_a = pos_a[dim] - scale_a[dim] / 2
+            max_a = pos_a[dim] + scale_a[dim] / 2
+            min_b = pos_b[dim] - scale_b[dim] / 2
+            max_b = pos_b[dim] + scale_b[dim] / 2
+            if max_a < min_b or max_b < min_a:
+                return False, f"XZ偏移: 接触面无重叠"
+
+        return True, f"物理支撑: gap={gap:.3f}m"
+
 
 # ============================================================
 # 测试

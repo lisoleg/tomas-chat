@@ -1111,5 +1111,154 @@ class TOMAS_Mem_OS_Fusion:
         return {"layers": layers, "total_edges": total}
 
 
+    # ----- HY World Bridge 钩子 (章锋2026 文章2) -----
+
+    def install_hyworld_bridge(self, bridge) -> 'TOMAS_Mem_OS_Fusion':
+        """
+        安装 HY World 2.0 ↔ TOMAS EML 桥接器
+
+        基于 hyworld_bridge.py 的 HYWorldBridge
+
+        Args:
+            bridge: HYWorldBridge 实例
+        """
+        self._hyworld_bridge = bridge
+        logger.info("[MemOS] HY World Bridge 已安装")
+        return self
+
+    def hyworld_build_scene(self, panorama_data: Dict[str, Any],
+                            scene_id: str = None) -> Any:
+        """
+        从全景图数据构建 HY Scene (通过桥接器)
+
+        Returns:
+            HYScene 对象
+        """
+        if not hasattr(self, '_hyworld_bridge') or not self._hyworld_bridge:
+            raise RuntimeError("HY World Bridge 未安装, 请先调用 install_hyworld_bridge()")
+        return self._hyworld_bridge.build_scene(panorama_data, scene_id)
+
+    def hyworld_dead_zero_audit(self, scene: Any) -> Dict[str, Any]:
+        """
+        对 HY Scene 执行死零审计
+
+        Returns:
+            {passed, rejected, mus_flagged, details, ...}
+        """
+        if not hasattr(self, '_hyworld_bridge') or not self._hyworld_bridge:
+            raise RuntimeError("HY World Bridge 未安装")
+        return self._hyworld_bridge.dead_zero_audit(scene)
+
+    # ----- SAI T-Proc 钩子 (章锋2026 文章1) -----
+
+    def install_sai_tproc(self, tproc) -> 'TOMAS_Mem_OS_Fusion':
+        """
+        安装 SAI T-Processor 后置审计器
+
+        基于 sai_tproc.py 的 TProcAuditor
+
+        Args:
+            tproc: TProcAuditor 实例
+        """
+        self._sai_tproc = tproc
+        logger.info("[MemOS] SAI T-Proc 审计器已安装")
+        return self
+
+    def sai_audit_hypothesis(self, hypothesis) -> Any:
+        """
+        审计单个 SAI 假设
+
+        Returns:
+            AuditResult (ALLOW/REJECT/MUS_ACTIVE)
+        """
+        if not hasattr(self, '_sai_tproc') or not self._sai_tproc:
+            raise RuntimeError("SAI T-Proc 未安装, 请先调用 install_sai_tproc()")
+        return self._sai_tproc.audit_hypothesis(hypothesis)
+
+    def sai_audit_batch(self, hypotheses: List) -> List:
+        """批量审计 SAI 假设池"""
+        if not hasattr(self, '_sai_tproc') or not self._sai_tproc:
+            raise RuntimeError("SAI T-Proc 未安装")
+        return self._sai_tproc.audit_batch(hypotheses)
+
+    def sai_filter_allowed(self, hypotheses: List) -> List:
+        """过滤: 仅返回通过审计的假设"""
+        if not hasattr(self, '_sai_tproc') or not self._sai_tproc:
+            raise RuntimeError("SAI T-Proc 未安装")
+        return self._sai_tproc.filter_allowed(hypotheses)
+
+    def get_sai_audit_report(self) -> Dict[str, Any]:
+        """获取 SAI 审计报告"""
+        if not hasattr(self, '_sai_tproc') or not self._sai_tproc:
+            return {"error": "SAI T-Proc 未安装"}
+        return self._sai_tproc.get_audit_report()
+
+    # ----- 空间死零审计钩子 (章锋2026) -----
+
+    def install_spatial_auditor(self, auditor) -> 'TOMAS_Mem_OS_Fusion':
+        """
+        安装空间死零审计器
+
+        基于 spatial_dead_zero.py 的 SpatialDeadZeroAuditor
+
+        Args:
+            auditor: SpatialDeadZeroAuditor 实例
+        """
+        self._spatial_auditor = auditor
+        logger.info("[MemOS] 空间死零审计器已安装")
+        return self
+
+    def audit_3d_scene(self, objects: List[Dict[str, Any]],
+                       ground_truth: List[Dict[str, Any]] = None) -> Any:
+        """
+        对 3D 场景执行空间死零审计
+
+        Returns:
+            SpatialAuditReport
+        """
+        if not hasattr(self, '_spatial_auditor') or not self._spatial_auditor:
+            raise RuntimeError("空间死零审计器未安装, 请先调用 install_spatial_auditor()")
+        return self._spatial_auditor.audit(objects, ground_truth)
+
+    def filter_3d_scene(self, objects: List[Dict[str, Any]]) -> Tuple:
+        """
+        过滤 3D 场景: 移除死零/悬浮物体
+
+        Returns:
+            (passed_objects, rejected_objects)
+        """
+        if not hasattr(self, '_spatial_auditor') or not self._spatial_auditor:
+            raise RuntimeError("空间死零审计器未安装")
+        return self._spatial_auditor.filter_scene(objects)
+
+    def auto_snap_scene(self, objects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """自动将悬浮物体吸附到地面"""
+        if not hasattr(self, '_spatial_auditor') or not self._spatial_auditor:
+            raise RuntimeError("空间死零审计器未安装")
+        return self._spatial_auditor.auto_snap_to_ground(objects)
+
+    def get_spatial_audit(self, objects: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        综合空间审计: 获取完整报告
+
+        快捷方法 — 一站式审计
+        """
+        if not hasattr(self, '_spatial_auditor') or not self._spatial_auditor:
+            raise RuntimeError("空间死零审计器未安装")
+
+        report = self._spatial_auditor.audit(objects)
+        return {
+            "total_objects": report.total_objects,
+            "grounded": report.grounded,
+            "floating": report.floating,
+            "penetrating": report.penetrating,
+            "unstable": report.unstable,
+            "mus_active": report.mus_active,
+            "dead_zero": report.dead_zero,
+            "global_i_density": report.global_i_density,
+            "details": report.details,
+        }
+
+
 # 导出
 __all__ = ["TOMAS_Mem_OS_Fusion", "MemoryStore", "MemoryRecord", "PsiAnchor", "PsiAnchorManager"]
