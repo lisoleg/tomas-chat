@@ -136,24 +136,32 @@ class TestInferenceEngine:
         # assert result["route"] == "writer"
 
 
-@pytest.mark.skip(reason="需要 DeepSeek API Key")
+def _has_deepseek_key() -> bool:
+    """检查 DeepSeek API Key 是否已配置"""
+    from dotenv import load_dotenv
+    dotenv_path = os.path.join(os.path.dirname(__file__), "..", "sim", ".env")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
+    key = os.getenv("DEEPSEEK_API_KEY", "")
+    return len(key) > 5
+
+
+@pytest.mark.skipif(not _has_deepseek_key(), reason="需要 DeepSeek API Key")
 class TestCreativeEngine:
     """测试创造性引擎（需要 API Key）"""
     
     def setup_method(self):
-        api_key = os.getenv("DEEPSEEK_API_KEY", "test-key")
-        mock_bridge = Mock()
-        self.engine = CreativeEngine(api_key=api_key, bridge=mock_bridge)
+        api_key = os.getenv("DEEPSEEK_API_KEY", "")
+        if not api_key:
+            pytest.skip("DEEPSEEK_API_KEY not configured")
+        self.engine = CreativeEngine(api_key=api_key)
     
     def test_generate_with_context(self):
         """测试带 EML 上下文的生成"""
-        context = {
-            "vertices": [{"id": 1, "label": "物理"}],
-            "edges": []
-        }
-        result = self.engine.generate("解释物理", context=context)
-        assert result is not None
-        assert "text" in result
+        eml_context = "相关概念: 物理(物质和能量), 力学(经典力学、量子力学)"
+        result = self.engine.generate("用简短的一句话解释物理是什么", eml_context=eml_context)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
 
 if __name__ == "__main__":
