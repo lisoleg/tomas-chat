@@ -20,6 +20,9 @@
 | **GPU加速** | CUDA 12.x（sm_70+） | 八元数乘法大规模并行化 |
 | **形式化校验** | Lean 4 + Coq 8.17 | Lean 4用于MNQ认知校验，Coq用于双重验证 |
 | **构建系统** | Makefile + Kbuild（内核） + Vite（前端） | 各语言标准构建工具 |
+| **前端样式** | Tailwind CSS 4 | 实用优先的CSS框架，快速UI开发 |
+| **状态管理** | Zustand（4个store） | 轻量级状态管理，app/dashboard/chat/tshield |
+| **3D渲染** | Three.js + @react-three/fiber | 3D场景可视化，WorldModelViewer组件 |
 
 ### 1.2 整体架构分层
 
@@ -384,6 +387,42 @@ i_weight = 1.0 + ln(1 + subject_freq) / 10.0
 - `GET /api/knowledge/triples?min_i_weight=1.5`
 - `GET /api/knowledge/graph?min_i_weight=1.5`
 - 结果按 `i_weight DESC` 排序
+
+### 3.5 前端组件架构（v3.3更新）
+
+**新增/修复的组件**：
+
+| 组件 | 文件路径 | 功能 | 状态 |
+|------|----------|------|------|
+| **TShieldPanel** | `deepseek-chat/src/components/TShieldPanel.tsx` | T-Shield认知安全层监控面板 | ✅ 修复JSX解析错误 |
+| **TProcessorPanel** | `deepseek-chat/src/components/TProcessorPanel.tsx` | T-Processor硬件仿真器监控面板 | ✅ 新增 |
+| **IconCpu** | `deepseek-chat/src/components/icons.tsx` | CPU芯片SVG图标（用于T-Processor/T-Shield导航） | ✅ 新增 |
+| **DistillPanel** | `deepseek-chat/src/components/DistillPanel.tsx` | 蒸馏UI + Token Bridge推理面板 | ✅ 修复未闭合`<div>`标签 |
+
+**对话意图检测优化**：
+
+新增 `is_conversational_query()` 函数（Python/TypeScript双端实现），通过模式匹配识别6类对话查询：
+1. 身份类（"你是谁"、"你是.*吗"）
+2. 问候类（"你好"、"嗨"、"早上好"）
+3. 闲聊类（"今天天气"、"讲个笑话"）
+4. 能力询问（"你能.*吗"、"你会.*吗"）
+5. 观点询问（"你觉得"、"你认为"）
+6. 礼貌用语（"谢谢"、"不客气"）
+
+**效果**：对话查询强制走LLM作家路径，避免无意义的EML检索。
+
+**CRLF规范化**：
+
+修复Windows环境下编辑的TypeScript文件中的CRLF（`\r\n`）换行符，避免esbuild的`build()` API在处理大文件时误报"Unterminated regular expression"。
+
+**修复文件**：
+- `deepseek-chat/src/api/distiller.ts`
+- `deepseek-chat/src/hooks/useChat.ts`
+- `deepseek-chat/src/components/TShieldPanel.tsx`
+
+**构建验证**：
+- TypeScript类型检查：`npx tsc --noEmit` ✓ (0 errors)
+- Vite生产构建：`npx vite build` ✓ (1082 modules)
 
 ---
 

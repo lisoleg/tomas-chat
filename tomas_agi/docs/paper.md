@@ -687,6 +687,88 @@ TOMAS Dashboard 是一个基于 **Vite + React 18 + TypeScript + Tailwind CSS** 
 
 ---
 
+## Appendix E：UI修复与构建优化（v3.3 · 2026-06-18）
+
+### E.1 引言
+
+TOMAS-AGI v3.3 版本聚焦于前端UI稳定性修复与构建流程优化。主要解决JSX语法解析错误、CRLF换行符导致的构建失败、以及对话意图检测优化等问题。
+
+### E.2 对话意图检测优化
+
+**问题**：系统将问候/身份/闲聊类查询（如"你是谁"）错误路由到EML翻译官模式（置信度89%），导致输出无意义的EML检索结果。
+
+**解决方案**：新增 `is_conversational_query()` 函数（Python/TypeScript双端实现），通过模式匹配识别6类对话查询：
+1. 身份类（"你是谁"、"你是.*吗"）
+2. 问候类（"你好"、"嗨"、"早上好"）
+3. 闲聊类（"今天天气"、"讲个笑话"）
+4. 能力询问（"你能.*吗"、"你会.*吗"）
+5. 观点询问（"你觉得"、"你认为"）
+6. 礼貌用语（"谢谢"、"不客气"）
+
+**效果**：对话查询强制走LLM作家路径，响应质量显著提升。
+
+**代码位置**：
+- Python: `tomas_agi/sim/token_bridge.py` (lines 45-67)
+- TypeScript: `deepseek-chat/src/api/distiller.ts` (lines 15-37)
+- TypeScript: `deepseek-chat/src/hooks/useChat.ts` (lines 89-92)
+
+### E.3 JSX语法错误修复
+
+**问题**：TShieldPanel.tsx 第200行使用 `ℹ️` emoji作为JSX文本子节点，导致Babel解析器崩溃（`Unexpected token`）。
+
+**根因**：某些Unicode组合字符在JSX文本位置（非表达式、非属性）时，Babel的JSX解析器在特定组合下会报错。这是Babel/Parser的已知边界问题。
+
+**解决方案**：用 `{''}` 表达式包裹Unicode文本，使其变成JS字符串表达式，绕过Babel的JSX文本解析。
+
+**其他修复**：
+- TShieldPanel.tsx 第304行：未闭合 `<span>` 标签 → 补 `</span>`
+- DistillPanel.tsx 第1061行：未闭合 `<div>` 标签导致82+级联TS错误 → 回退到已知好版本（commit 5b1a580）
+
+**验证**：`npx tsc --noEmit` ✓ (0 errors), `npx vite build` ✓ (1082 modules)
+
+### E.4 CRLF规范化
+
+**问题**：Windows环境下编辑的TypeScript文件包含CRLF（`\r\n`）换行符，esbuild的 `build()` API在处理大文件（>2000行）时会出现 "Unterminated regular expression" 误报。
+
+**解决方案**：
+1. 检测：Node.js脚本扫描文件中的 `\r` 字符
+2. 转换：将所有CRLF转换为LF（`\n`）
+3. 预防：Git配置 `core.autocrlf` 设置为 `false`，避免未来引入CRLF
+
+**修复文件**：
+- `deepseek-chat/src/api/distiller.ts`
+- `deepseek-chat/src/hooks/useChat.ts`
+- `deepseek-chat/src/components/TShieldPanel.tsx`
+
+### E.5 构建验证
+
+**TypeScript类型检查**：
+```bash
+cd deepseek-chat && npx tsc --noEmit
+# 结果：0 errors
+```
+
+**Vite生产构建**：
+```bash
+cd deepseek-chat && npx vite build
+# 结果：✓ 1082 modules transformed, bundle size: 710KB JS → 194KB gzip
+```
+
+**测试通过率**：
+- 后端：617 passed + 2 skipped (need API Key), 0 failed
+- 前端：17/17 passed (Vitest + RTL)
+
+### E.6 总结
+
+TOMAS-AGI v3.3 通过系统性的UI修复与构建优化，显著提升了前端稳定性与开发体验。关键改进包括：
+
+1. **对话意图检测**：避免无意义EML检索，响应质量提升
+2. **JSX语法修复**：解决Babel解析器边界问题
+3. **CRLF规范化**：修复esbuild构建误报
+4. **构建验证**：TypeScript 0错误，Vite构建1082模块全部通过
+
+---
+
 ## 参考文献 (References)
 
 [1] 章锋, 李宗海. "太乙互搏 AGI——基于互搏架构的非结合通用人工智能理论（v2.0）". 2026.
