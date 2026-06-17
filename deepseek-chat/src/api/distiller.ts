@@ -13,6 +13,38 @@ const EML_VERSION = 0x00020000
 /** 默认 Laplacian α */
 const DEFAULT_LAPLACIAN_ALPHA = 0.15
 /** 默认图 δ */
+const DEFAULT_GRAPH_DELTA = 0.05
+
+// ===================== 对话意图检测 =====================
+
+/**
+ * 检测查询是否为对话/闲聊型（应强制走 LLM 作家路径，不走 EML 翻译官）
+ *
+ * 覆盖场景：
+ * - 身份/自我介绍：你是谁, 你叫什么,介绍一下自己, 你是什么
+ * - 问候/寒暄：你好, 嗨, hi, hello, 早上好, 晚上好
+ * - 社交/礼貌：谢谢, 不客气, 再见, 拜拜, 对不起
+ * - 观点/评价：你觉得, 你认为, 怎么看, 你喜欢
+ * - 能力/帮助：你能做什么, 帮帮我, 怎么用
+ */
+const CONVERSATIONAL_PATTERNS = [
+  // 身份/自我
+  /^(你是谁|你是谁呀|你叫什么|你叫什么名字|介绍一下[你自]己|你是什[么么]|what are you|who are you)/i,
+  // 问候
+  /^(你好|您好|嗨|hi|hello|嘿|哈喽|早[上午安]|晚[上午安]|good (morning|afternoon|evening))/i,
+  // 礼貌/社交
+  /^(谢谢|感谢|不客气|没关系|再见|拜拜|bye|goodbye|对不起|抱歉|好的?|嗯|哦|好吧)/i,
+  // 观点/态度
+  /(你觉[得认为]|你怎[么样么]看|你(的)?看法|你喜[欢不喜欢])/i,
+  // 能力/帮助
+  /^(你能做什|你会什|帮帮我|怎么用|如何使用|help|can you)/i,
+]
+
+export function isConversationalQuery(text: string): boolean {
+  const trimmed = text.trim()
+  if (trimmed.length <= 4) return true // 极短输入（如"你好"、"谢谢"）一律走作家
+  return CONVERSATIONAL_PATTERNS.some(p => p.test(trimmed))
+}
 const DEFAULT_GRAPH_DELTA = 0.01
 /** 信息存在度默认参数 */
 const DEFAULT_ALPHA = 0.4
@@ -717,7 +749,9 @@ export class TokenBridgeClient {
     }
 
     // Step 2: 路由判断
-    const useCreative = options?.forceCreative
+    // 对话型查询（问候/身份/闲聊）→ 强制走作家路径，不管 EML 置信度多高
+    const isChat = isConversationalQuery(query)
+    const useCreative = isChat || options?.forceCreative
       || (!options?.forceTranslator
           && confidence < 0.5
           && !!options?.llmApiKey)

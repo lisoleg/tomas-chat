@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { streamChatCompletion } from '../api/deepseek'
 import type { TokenBridgeClient } from '../api/distiller'
+import { isConversationalQuery } from '../api/distiller'
 import {
   loadApiKey,
   loadSessions,
@@ -356,8 +357,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const subgraphVertexCount = subgraphNeighborIds.size
       const subgraphEdgeCount = subgraphEdges.length
 
-      // Step 2: 路由判断 — 置信度 ≥ 0.5 → 翻译官，< 0.5 → 作家
-      const isTranslator = confidence >= 0.5
+      // Step 2: 路由判断 — 对话型查询强制走作家，否则置信度 ≥ 0.5 → 翻译官，< 0.5 → 作家
+      const isChat = isConversationalQuery(trimmed)
+      const isTranslator = !isChat && confidence >= 0.5
 
       if (isTranslator) {
         // —— 翻译官模式 ——

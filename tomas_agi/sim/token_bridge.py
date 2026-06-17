@@ -196,6 +196,27 @@ def text_to_octonion(text: str, dimension: int = 8) -> np.ndarray:
     return phi
 
 
+# ============================================================
+# 对话意图检测（路由前置过滤器）
+# ============================================================
+
+_CONVERSATIONAL_PATTERNS = [
+    re.compile(r'^(你是谁|你是谁呀|你叫什么|你叫什么名字|介绍一下[你自]己|你是什[么么])', re.IGNORECASE),
+    re.compile(r'^(你好|您好|嗨|哈喽|早[上好]|晚[上好])', re.IGNORECASE),
+    re.compile(r'^(谢谢|感谢|不客气|再见|拜拜|对不起|抱歉|好的?|嗯|哦)', re.IGNORECASE),
+    re.compile(r'(你觉[得认为]|你怎[么样么]看|你(的)?看法|你喜[欢不喜欢])', re.IGNORECASE),
+    re.compile(r'^(你能做什|你会什|帮帮我|怎么用|如何使用)', re.IGNORECASE),
+]
+
+
+def is_conversational_query(text: str) -> bool:
+    """检测查询是否为对话/闲聊型 → 应强制走作家路径"""
+    trimmed = text.strip()
+    if len(trimmed) <= 4:
+        return True
+    return any(p.search(trimmed) for p in _CONVERSATIONAL_PATTERNS)
+
+
 class TokenBridge:
     """
     Token Bridge：将 EML 图作为推理核心，替代 LLM
@@ -907,8 +928,10 @@ class InferenceEngine:
             }
 
         # Step 3: 判断路由
+        # 对话型查询 → 强制走作家路径，不管 EML 置信度多高
+        is_chat = is_conversational_query(text)
         has_llm = self.creative_engine is not None or self._use_router
-        use_creative = force_creative or (
+        use_creative = force_creative or is_chat or (
             not force_translator
             and confidence < self.TRANSLATOR_THRESHOLD
             and has_llm
