@@ -5,7 +5,7 @@ import type { AppMode, ChatSession } from '../types'
 import {
   IconChat, IconKey, IconPlus, IconSparkles, IconTrash, IconEdit,
   IconDashboard, IconGlobe, IconAuditLog, IconBrain, IconMemory,
-  IconShield, IconLayers, IconFlame, IconRoute
+  IconShield, IconLayers, IconFlame, IconRoute, IconCpu
 } from './icons'
 import { SkeletonText } from './Skeleton'
 
@@ -40,6 +40,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'distill', label: '蒸馏', icon: <IconBrain size={17} />, section: 'core' },
   { id: 'world-model', label: '世界模型', icon: <IconGlobe size={17} />, section: 'monitor' },
   { id: 'audit', label: '审计监控', icon: <IconAuditLog size={17} />, section: 'monitor' },
+  { id: 'tprocessor', label: 'T-Processor', icon: <IconCpu size={17} />, section: 'monitor' },
+  { id: 'tshield', label: 'T-Shield', icon: <IconShield size={17} />, section: 'monitor' },
   { id: 'memory', label: '记忆浏览器', icon: <IconMemory size={17} />, section: 'monitor' },
   { id: 'firewall-router', label: '防火墙·路由', icon: <IconShield size={17} />, section: 'monitor' },
   { id: 'ido', label: 'IDO 桥接', icon: <IconLayers size={17} />, section: 'engine' },

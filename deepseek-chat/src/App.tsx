@@ -15,6 +15,8 @@ import IDOPanel from './components/IDOPanel'
 import FDEPanel from './components/FDEPanel'
 import DualTimelinePanel from './components/DualTimelinePanel'
 import ITOTPanel from './components/ITOTPanel'
+import TProcessorPanel from './components/TProcessorPanel'
+import TShieldPanel from './components/TShieldPanel'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useToast } from './components/Toast'
@@ -153,6 +155,18 @@ export default function App() {
         return (
           <ErrorBoundary>
             <ITOTPanel />
+          </ErrorBoundary>
+        )
+      case 'tprocessor':
+        return (
+          <ErrorBoundary>
+            <TProcessorPanel />
+          </ErrorBoundary>
+        )
+      case 'tshield':
+        return (
+          <ErrorBoundary>
+            <TShieldPanel />
           </ErrorBoundary>
         )
       case 'docs':

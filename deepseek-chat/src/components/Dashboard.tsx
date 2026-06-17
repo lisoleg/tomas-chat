@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   IconBrain, IconShield, IconMemory, IconLayers,
-  IconRoute, IconFlame, IconGlobe, IconAuditLog
+  IconRoute, IconFlame, IconGlobe, IconAuditLog, IconCpu
 } from './icons';
 
 // ── Types ──────────────────────────────────────────────
@@ -89,10 +89,12 @@ export default function Dashboard() {
                   spatial: 'audit',
                   deadzero: 'audit',
                   memos: 'memory',
-                  dikwp: 'dikwp',
-                  firewall: 'firewall',
-                  router: 'router',
+                  dikwp: 'distill',
+                  firewall: 'firewall-router',
+                  router: 'firewall-router',
                   nasga: 'audit',
+                  tprocessor: 'tprocessor',
+                  tshield: 'tshield',
                 };
                 const target = panelMap[sys.id] || sys.id;
                 window.dispatchEvent(new CustomEvent('tomas-nav', { detail: { panel: target } }));
@@ -266,6 +268,28 @@ function buildSubsystemCards(): SubsystemCard[] {
       stats: [
         { label: '在线', value: '12/12' },
         { label: '请求', value: '89' },
+      ],
+    },
+    {
+      id: 'tprocessor',
+      name: 'T-Processor 仿真器',
+      description: 'RRAM Crossbar · DZ Comparator · MUS Arbiter · κ-Snap Scheduler',
+      status: 'active',
+      icon: <IconCpu className="w-5 h-5" />,
+      stats: [
+        { label: '周期', value: '1,420' },
+        { label: '拒绝', value: '47' },
+      ],
+    },
+    {
+      id: 'tshield',
+      name: 'T-Shield 认知安全',
+      description: 'I-Scene 估计 · Dead-Zero Grafting · MUS 双盒 · κ-Snap · G_ego',
+      status: 'active',
+      icon: <IconShield className="w-5 h-5" />,
+      stats: [
+        { label: 'ℐ均值', value: '0.68' },
+        { label: '死零', value: '18' },
       ],
     },
   ];
