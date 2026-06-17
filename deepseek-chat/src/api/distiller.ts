@@ -45,7 +45,6 @@ export function isConversationalQuery(text: string): boolean {
   if (trimmed.length <= 4) return true // 极短输入（如"你好"、"谢谢"）一律走作家
   return CONVERSATIONAL_PATTERNS.some(p => p.test(trimmed))
 }
-const DEFAULT_GRAPH_DELTA = 0.01
 /** 信息存在度默认参数 */
 const DEFAULT_ALPHA = 0.4
 const DEFAULT_BETA = 0.4
@@ -531,7 +530,7 @@ export function loadEMLFromBuffer(buffer: ArrayBuffer): EMLGraphData {
       octonion.push(view.getFloat64(off + 8 + d * 8, true))
     }
     const delta = view.getFloat64(off + 72, true)
-    vertices.push({ id, label: `concept_${id}`, octonion, delta })
+    vertices.push({ id, label: '', octonion, delta }) // 标签留空，由 loadConceptNames / 外部映射补充真实概念名
   }
 
   // ---- Edges ----
@@ -1169,8 +1168,8 @@ export class TokenBridgeClient {
         const key = `${e.src}-${e.dst}`
         if (shown.has(key)) continue
         if (matchedIds.has(e.src) || matchedIds.has(e.dst)) {
-          const srcName = conceptNames.get(e.src) || `概念_${e.src}`
-          const dstName = conceptNames.get(e.dst) || `概念_${e.dst}`
+          const srcName = conceptNames.get(e.src) || `v${e.src}`
+          const dstName = conceptNames.get(e.dst) || `v${e.dst}`
           lines.push(`  • ${srcName} 相关于 ${dstName}`)
           shown.add(key)
           count++
@@ -1216,9 +1215,9 @@ export class TokenBridgeClient {
     for (const e of edges) {
       if (related.length >= 3) break
       if (e.src === vertexId) {
-        related.push(conceptNames.get(e.dst) || `概念_${e.dst}`)
+        related.push(conceptNames.get(e.dst) || `v${e.dst}`)
       } else if (e.dst === vertexId) {
-        related.push(conceptNames.get(e.src) || `概念_${e.src}`)
+        related.push(conceptNames.get(e.src) || `v${e.src}`)
       }
     }
     return related

@@ -387,7 +387,10 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
     if (concepts.length > 0) {
       concepts.forEach((c, i) => m.set(i, c.concept))
     } else if (bridgeState.graph) {
-      bridgeState.graph.vertices.forEach(v => m.set(v.id, v.label))
+      bridgeState.graph.vertices.forEach(v => {
+        // EML 二进制的 label 可能为空，用 ID 回退
+        m.set(v.id, v.label || `v${v.id}`)
+      })
     }
     return m
   }, [concepts, bridgeState.graph])
@@ -629,11 +632,42 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
       const buffer = await file.arrayBuffer()
       const graph = loadEMLFromBuffer(buffer)
 
-      // 构建概念名称映射（从蒸馏结果恢复）
+      // 构建概念名称映射（优先级：蒸馏结果 > 服务器DB > ID回退）
       const conceptNames = new Map<number, string>()
+
+      // 优先从蒸馏结果恢复
       if (concepts.length > 0 && concepts.length === graph.vertices.length) {
         concepts.forEach((c, i) => conceptNames.set(i, c.concept))
       }
+      // 蒸馏结果不足时，尝试从服务器 OwnThink DB 补充概念名
+      if (conceptNames.size === 0) {
+        try {
+          const dbRes = await fetch('http://localhost:5000/api/knowledge/graph?limit=10000')
+          if (dbRes.ok) {
+            const dbData = await dbRes.json()
+            if (dbData.success && dbData.concepts.length > 0) {
+              // EML 的 vertex.id 是自增整数，DB 概念按数组顺序也是整数
+              // 用 DB 概念列表按顺序映射到 vertex ID
+              const dbConcepts = dbData.concepts as string[]
+              graph.vertices.forEach((v, idx) => {
+                if (idx < dbConcepts.length) {
+                  conceptNames.set(v.id, dbConcepts[idx])
+                }
+              })
+              console.log(`[DistillPanel] 从服务器补充了 ${conceptNames.size} 个概念名`)
+            }
+          }
+        } catch (dbErr) {
+          console.warn('[DistillPanel] 从服务器获取概念名失败（非致命）:', dbErr)
+        }
+      }
+
+      // 最终回退：用 ID 作为标签
+      graph.vertices.forEach(v => {
+        if (!conceptNames.has(v.id)) {
+          conceptNames.set(v.id, `v${v.id}`)
+        }
+      })
 
       bridgeClient.current.loadEML(buffer, conceptNames)
       const loadedGraph = bridgeClient.current.getGraph()!
@@ -652,14 +686,11 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
         avgDelta
       })
 
-      // 解析图谱数据用于可视化，用真实概念名替换占位符
-      // 文件上传的 EML 没有语料信息，corpusName 留空
+      // 解析图谱数据用于可视化，始终应用真实概念名
       const vizGraph = extractGraphForVisualization(buffer)
-      if (vizGraph && concepts.length > 0) {
-        const nameMap = new Map<number, string>()
-        concepts.forEach((c, i) => nameMap.set(i, c.concept))
+      if (vizGraph) {
         vizGraph.vertices.forEach(v => {
-          const realName = nameMap.get(v.id)
+          const realName = conceptNames.get(v.id)
           if (realName) v.label = realName
         })
       }
