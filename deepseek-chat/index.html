@@ -5,11 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#343541" />
-    <meta name="description" content="基于 DeepSeek API 的 ChatGPT 风格聊天界面" />
+    <meta name="description" content="太极AGI" />
     <title>DeepSeek Chat</title>
   </head>
   <body class="bg-chatBg text-textPrimary antialiased">
     <div id="root"></div>
+    <script>
+      // 捕获未处理的错误并显示在页面上
+      window.onerror = function(msg, url, line, col, error) {
+        document.getElementById('root').innerHTML = 
+          '<div style="color: red; padding: 20px; background: #1a1a1a;">' +
+          '<h2>JavaScript 错误</h2>' +
+          '<p><strong>错误:</strong> ' + msg + '</p>' +
+          '<p><strong>位置:</strong> ' + url + ':' + line + ':' + col + '</p>' +
+          '<pre>' + (error && error.stack || '无堆栈') + '</pre></div>';
+        return false;
+      };
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
