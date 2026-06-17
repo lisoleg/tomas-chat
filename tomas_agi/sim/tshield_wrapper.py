@@ -5,19 +5,29 @@ T-Shield 认知安全层
 为 AI 视觉系统提供认知安全保障，基于 TOMAS 三大机制:
 1. Dead-Zero Grafting (死零嫁接) — 低激活区域透明标记
 2. MUS Dual-Box Marking (MUS 双框标记) — 歧义区域黄色警示
-3. κ-Snap Scheduling (κ- snap 调度) — 事件驱动配置选择
+3. κ-Snap Scheduling (κ-snap 调度) — 事件驱动配置选择
+4. G_ego Bidirectional Operator (G_ego 双向算子) — Afferent/Efferent DMN 映射
 
 应用场景: 目标检测 (YOLO/DETR 等) + 认知安全层
 
 作者: TOMAS 团队
-日期: 2026-06-16
-版本: 1.0.0
+日期: 2026-06-16 (升级: 2026-06-17)
+版本: 1.1.0 (集成 G_ego)
 """
 
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
+
+# TOMAS 模块导入
+try:
+    from g_ego import G_egoEngine, G_egoStatus
+    _HAS_G_EGO = True
+except ImportError:
+    _HAS_G_EGO = False
+    G_egoEngine = None
+    G_egoStatus = None
 
 
 # ============================================================
@@ -396,17 +406,26 @@ class TShieldWrapper:
     6. 输出 → 带认知标记的检测结果
     """
 
-    def __init__(self):
+    def __init__(self, enable_g_ego: bool = True):
         self.i_scene_estimator = ISceneEstimator()
         self.dz_graft = DeadZeroGraft()
         self.mus_marker = MUSBoxMarker()
         self.snap_scheduler = KSnapScheduler()
+
+        # G_ego 双向算子集成
+        self.enable_g_ego = enable_g_ego and _HAS_G_EGO
+        if self.enable_g_ego:
+            self.g_ego_engine = G_egoEngine.get_instance()
+        else:
+            self.g_ego_engine = None
 
         self.stats = {
             "n_processed": 0,
             "n_dead_zone": 0,
             "n_ambiguous": 0,
             "config_switches": 0,
+            "g_ego_mode_switches": 0,
+            "g_ego_anomaly_resets": 0,
         }
 
     def infer(self, image: np.ndarray, detections: List[Dict]) -> Dict:
@@ -494,6 +513,48 @@ class TShieldWrapper:
         if is_dead:
             self.stats["n_dead_zone"] += 1
 
+        # 1b. G_ego 双向算子: 根据 I-Scene 决定 Afferent/Efferent DMN 模式
+        g_ego_status = None
+        dmn_result = None
+        if self.enable_g_ego and self.g_ego_engine is not None:
+            # I-Scene 高 → Afferent (外部感知 → 内部语义)
+            # I-Scene 低 → Efferent (内部语义 → 外部行动)
+            target_mode = "afferent" if i_scene >= self.g_ego_engine.i_threshold else "efferent"
+            switch_result = self.g_ego_engine.switch_mode(target_mode)
+            if switch_result["success"]:
+                self.stats["g_ego_mode_switches"] += 1
+
+            # 执行 DMN 映射
+            if target_mode == "afferent":
+                perceptual_input = {
+                    "i_scene": i_scene,
+                    "n_detections": len(detections),
+                    "features": image_features[:64].tolist(),
+                }
+                dmn_result = self.g_ego_engine.afferent_mapping(perceptual_input)
+            else:
+                semantic_query = {
+                    "i_scene": i_scene,
+                    "labels": list(set(d["label"] for d in detections)),
+                    "n_detections": len(detections),
+                }
+                dmn_result = self.g_ego_engine.efferent_mapping(semantic_query)
+
+            # T-Shield 监控：检测 G_ego 异常
+            monitor_result = self.g_ego_engine.t_shield_monitor(n_recent_steps=3)
+            if monitor_result.get("reset_triggered"):
+                self.stats["g_ego_anomaly_resets"] += 1
+                # 异常恢复：重新设定 ℐ 值
+                self.g_ego_engine._status.i_value = max(i_scene, 0.3)
+
+            g_ego_status = {
+                "mode": target_mode,
+                "i_value": self.g_ego_engine._status.i_value,
+                "info_loss": dmn_result.info_loss if dmn_result else None,
+                "consistency": dmn_result.consistency if dmn_result else None,
+                "reset_triggered": monitor_result.get("reset_triggered", False),
+            }
+
         # 2. Dead-Zero Grafting
         boxes, dead_indices = self.dz_graft.check(boxes)
         if len(dead_indices) > 0 and len(boxes) > len(dead_indices):
@@ -527,6 +588,7 @@ class TShieldWrapper:
             "dead_indices": dead_indices,
             "ambiguous_pairs": ambiguous_pairs,
             "config": config,
+            "g_ego": g_ego_status,  # G_ego 双向算子状态
             "scene_assessment": {
                 "i_scene": i_scene,
                 "complexity": scene_complexity,
@@ -541,6 +603,39 @@ class TShieldWrapper:
     def get_stats(self) -> Dict:
         """获取统计信息"""
         return self.stats.copy()
+
+    def set_g_ego_mode(self, mode: str) -> Dict[str, Any]:
+        """设置 G_ego 模式。
+
+        Args:
+            mode: 'afferent', 'efferent', or 'idle'
+
+        Returns:
+            切换结果
+        """
+        if not self.enable_g_ego or self.g_ego_engine is None:
+            return {
+                "success": False,
+                "error": "G_ego not enabled",
+            }
+
+        old_mode = self.g_ego_engine.get_status()["mode"]
+        result = self.g_ego_engine.switch_mode(mode)
+
+        if result["success"]:
+            self.stats["g_ego_mode_switches"] += 1
+
+        return result
+
+    def get_g_ego_status(self) -> Dict[str, Any]:
+        """获取 G_ego 当前状态。"""
+        if not self.enable_g_ego or self.g_ego_engine is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            **self.g_ego_engine.get_status(),
+        }
 
     def save_config(self, path: str) -> None:
         """
