@@ -50,6 +50,26 @@
 - `fde_builder.py` — **FDE道法术器本体构建器（ℐ-标定/四阶验证/EchoContext/工业标准接地，2026-06-16）**
 - `dual_timeline.py` — **双时间维度引擎（因果/认知分离 + 认知防火墙 + 奇点消解，2026-06-16）**
 - `itot_bridge.py` — **IT-OT翻译桥（IT↔OT翻译 + 技术债务治理 + 零信任门控，2026-06-16）**
+- `server.py` — **Flask API 服务器，新增 16+7 个 REST 端点（IDO/FDE/DualTimeline/ITOT + T-Processor/T-Shield，2026-06-16）**
+- `tprocessor_sim.py` — **T-Processor v1.0 硬件仿真器（RRAM Crossbar/DZ Comparator/MUS Arbiter/κ-Snap Scheduler，2026-06-16）**
+- `tshield_wrapper.py` — **T-Shield 认知安全层（DZ Grafting/MUS Dual-Box/κ-Snap Scheduling + 向量化优化 + batch/profile/config，2026-06-17）**
+- `processor_tshield_integration.py` — **T-Processor + T-Shield 联合推理集成类（2026-06-17）**
+- `tshield_zynq_arch.md` — **T-Shield Zynq-7000 架构设计文档（PS/PL分区/AXI接口/RTL模块/资源估算，2026-06-17）**
+
+## 全新独立 Web UI (tomas-dashboard/)
+- `tomas-dashboard/index.html` — **交互式设计稿（1943行，9页面，深色主题，SVG仪表盘，3D预览，2026-06-17）**
+
+## RTL 代码 (tomas_agi/rtl/)
+- `deadzone_comp_array.v` — Dead-Zone 并行比较器阵列 (32 值/周期)
+- `mus_similarity_engine.v` — MUS 流水线相似度引擎 (DSP48E1)
+- `axi_lite_slave.v` — AXI4-Lite 从设备 (12 个寄存器)
+- `bram_threshold.v` — BRAM 双端口阈值存储
+- `tshield_pl_top.v` — PL 顶层模块
+- `tb_deadzone_comp_array.v` — DZ 测试平台
+- `tb_mus_similarity_engine.v` — MUS 测试平台
+- `create_vivado_project.tcl` — Vivado 自动化脚本 (Zynq-7020)
+- `tshield_hal.h/c` — PS 端 C HAL (UIO/mmap + 软件回退)
+- `octonion_mul.v` / `delta_compute.v` / `spectral_engine.v` — NASGA M5 谱计算
 
 ## 数据文件
 - 语料: `tomas_agi/data/physics.txt`, `chemistry.txt`, `medicine.txt`
@@ -93,6 +113,10 @@
 - **聊天 (ChatArea)**: 保留，支持 EML 路由 + 太乙互博推理链路
 - **蒸馏 (DistillPanel)**: 保留，LLM 蒸馏 + 冲突检测 + 图谱 + DIKWP 饼图
 - **文档 (TechDocs)**: 保留，TOMAS 技术文档
+- **IDO 桥接 (IDOPanel)**: IDO 五元素模板 — 假设评估 / 梯度流 / Tier 分类 / ℐ 支持（2026-06-16 新增）
+- **FDE 本体 (FDEPanel)**: 道法术器四阶段构建 — ℐ 标定 / 技能不对称检测 / 工业标准接地（2026-06-16 新增）
+- **双时间维度 (DualTimelinePanel)**: 因果/认知双时间 — 对齐 / 认知防火墙 / 奇点消解（2026-06-16 新增）
+- **IT-OT 翻译 (ITOTPanel)**: IT↔OT 翻译 / 技术债务治理 / 零信任门 / 联合 KPI（2026-06-16 新增）
 - 置信度反馈: MessageBubble 显示 `📡 EML路由 · XX%` 标签 + 👍/👎 互斥按钮
 - 知识冲突检测: DistillPanel 蒸馏完成后检测同领域语料重叠 → 用户四选一决策
 - 冲突决策持久化: `tomas_conflict_decisions` localStorage key

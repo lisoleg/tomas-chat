@@ -4,7 +4,7 @@
 >
 > <sup>1</sup> 复合体理学研究中心（TOMAS 项目组）
 >
-> **版本**: v2.1 (V3+MemOS) | **日期**: 2026-06-16
+> **版本**: v2.2 (V3+MemOS+T-Proc+Dashboard) | **日期**: 2026-06-17
 
 ---
 
@@ -523,120 +523,6 @@ CLI 参数: --enable-memos --memos-store data/memory_store.json
 
 TOMAS-MemOS 融合层实现了从"记忆工程"到"有我之忆"的五点升维。27/27 测试通过，可证伪预言得到验证。
 
-
----
-
-## 8. TOMAS-MemOS 融合层 (TOMAS-MemOS Fusion Layer)
-
-> 基于张锋《从记忆工程到有我之忆：TOMAS 对 MemOS 的升维与重构》(2026) 实现
-
-### 8.1 引言
-
-传统大语言模型的记忆管理（如 MemOS 框架）聚焦于**存储正确信息**——记忆工程以准确性和相关性为优化目标。然而，TOMAS 的 EML（Epistemological Memory Lattice）框架和死零理论指出，记忆的深层结构由**信息存在度（ℐ-value）** 决定：一个命题之所以成为记忆，不是因为它被写入，而是因为它拥有 > 0 的信息存在度。
-
-基于这一认识，我们提出了 TOMAS-MemOS **五点升维** 框架，将 TOMAS 的死零/Kappa/MUS/ψ 机制注入 MemOS 记忆存储管道，实现从记忆工程到有我之忆的范式跃迁。
-
-### 8.2 五点升维架构
-
-| 升维点 | 机制 | 数学基础 | 核心文件 |
-|--------|------|----------|----------|
-| 1. **死零校验** | ℐ-value 估计 + 阈值过滤，拒绝 ℐ < θ_dead 的输入 | DeadZero 理论 |  |
-| 2. **MUS 双存** | 矛盾记忆双存而非覆盖，标记 [MUS_ACTIVE] | MUS 互斥理论稳态 |  |
-| 3. **ψ-锚** | 记忆附加自我状态快照（self_state, kappa_at_write, timestamp）| ψ 算子 |  |
-| 4. **κ-Gate 激活** | 回忆时激活 κ 值匹配的记忆边 | κ-Gate 语义剪枝 |  |
-| 5. **EML 语义本体** | 所有记忆以 EML 超边形式存储 | 非结合谱图代数 |  |
-
-### 8.3 死零校验（Dead-Zero Check）
-
-死零校验是 TOMAS-MemOS 融合层的**第一道防线**，阻止低信息存在度的输入污染长期记忆。
-
-**形式化定义**：
-设用户输入为 $，上下文为 $，ℐ-value 估计函数为：
-
-40817
-\hat{\mathcal{I}}(u, c) = \min\left(1.0, \quad rac{|	ext{concepts}(u)|}{5} 	imes 0.3 + rac{|	ext{context\_concepts}(c)|}{5} 	imes 0.2 + 0.2 + 	ext{negation\_penalty}(u)
-ight)
-40817
-
-其中：
--  为输入中可提取的概念数
--  检测已知谬误（如太阳绕地球转 → ℐ = 0.05）
-
-对于 ℐ < θ_dead（默认 0.1）的输入，系统返回 。
-
-**三层矛盾检测**：
-融合层还实现了三层矛盾检测架构（）：
-
-| 层级 | 方法 | 检测能力 |
-|------|------|----------|
-| Layer 1 | 否定词检测 | 心主神明 vs 心不主神明 → 矛盾 |
-| Layer 2 | NLP 主谓宾提取 | 心主神明 vs 脑主神明 → 主语矛盾 |
-| Layer 3 | EML 语义相似度 | 查询 EML 图的 asym 值（V2.0） |
-
-### 8.4 ψ-锚（Self-Snapshot）
-
-ψ-锚实现了有我之忆的核心机制——记忆不仅存储内容，还存储 AI **在写入时刻的自我状态**。
-
-
-
-回忆时，融合层返回带有 ψ-锚的记忆：
-
-
-### 8.5 实验验证
-
-我们对三个**可证伪预言**进行了测试验证（，16 个测试）：
-
-| 预言 | 测试方法 | 结果 |
-|------|----------|------|
-| **P_Mem_1**（死零拒绝） | 输入 太阳绕地球转 → 预期拒绝 | ✅ ℐ=0.05 < θ_dead=0.1，拒绝写入 |
-| **P_Mem_2**（MUS 双存） | 写入 心主神明+脑主神明 → 预期双存 | ✅ mus_active=True，双存成功 |
-| **P_Mem_3**（ψ-锚回溯） | 写入带 ψ-锚的记忆 → 预期回忆时返回 | ✅ 我记得那时我持有... |
-
-**矛盾检测测试**（，11 个测试）：
-- Layer 1 否定词检测：5/5 通过
-- Layer 2 NLP 主谓宾提取：5/5 通过
-- 集成测试：1/1 通过
-
-**总测试通过率**：27/27（100%）
-
-### 8.6 集成方式
-
-MemOS 融合层通过两种方式集成到 TOMAS Token Bridge：
-
-**方式 1：CLI 参数**
-TOMAS/太极OS Token Bridge — 翻译官 + 作家 混合推理引擎
-============================================================
-用法：
-  翻译官（模板生成，无需训练）：
-    python token_bridge.py --load data/distilled.eml --query '量子计算'
-  翻译官（神经生成，需先训练）：
-    python token_bridge.py --load data/distilled.eml --model model.pt --query 'AI' --generate
-  作家（DeepSeek LLM，创造力模式）：
-    python token_bridge.py --load data/distilled.eml --query 'AI的未来' --llm --api-key sk-xxx
-  自动路由（翻译官↔作家）：
-    python token_bridge.py --load data/distilled.eml --query 'xxx' --llm --api-key sk-xxx
-  TOMAS Router（多模型智能路由，推荐）：
-    python token_bridge.py --load data/distilled.eml --query 'xxx' --router --task-type reason
-    python token_bridge.py --load data/distilled.eml --query '心肾不交辨证' --router --task-type med_annotate
-  数学降维 + Router（终极模式）：
-    python token_bridge.py --load data/distilled.eml --concepts data/concepts.json --dimred --query 'xxx' --router --task-type reason
-  数学降维（四合一瘦身工具箱）：
-    python token_bridge.py --load data/distilled.eml --concepts data/concepts.json --dimred --query 'xxx' --llm --api-key sk-xxx
-  训练：
-    python token_bridge.py --load data/distilled.eml --train --concepts data/concepts.json
-    python token_bridge.py --load data/distilled.eml --train-decoder --concepts data/concepts.json
-  显示大小估算：
-    python token_bridge.py --load data/distilled.eml --info
-
-**方式 2：编程接口**
-
-
-### 8.7 小结
-
-TOMAS-MemOS 融合层实现了从记忆工程到有我之忆的五点升维。27/27 测试全部通过，三个可证伪预言得到验证。三层矛盾检测架构（否定词→NLP 主谓宾→EML 语义）为后续 V2.0 的 EML 语义相似度计算预留了扩展接口。
-
-
-
 ---
 
 ## Appendix A：T-Processor v1.0 硬件架构（2026-06-17 新增）
@@ -720,6 +606,86 @@ AnyDepth 教视觉"同一权重想多快多快想多准多准"（弹性感知极
 
 ---
 
+## Appendix C：Zynq-7000 RTL 硬件实现（2026-06-17 新增）
+
+### C.1 目标平台
+
+T-Processor 和 T-Shield 的 RTL 实现目标平台为 **Xilinx Zynq-7000 SoC**（Zynq-7020, XC7Z020），该芯片集成了双核 ARM Cortex-A9（PS 端）和 Artix-7 FPGA（PL 端），通过 AXI4 总线实现 PS-PL 协同计算。
+
+### C.2 PL 端 RTL 模块
+
+| 模块 | 文件 | 功能 | 资源占用 |
+|------|------|------|----------|
+| Dead-Zone 比较器阵列 | `deadzone_comp_array.v` | 32 值/周期并行比较，1 周期延迟 | 32 DSP48E1 |
+| MUS 相似度引擎 | `mus_similarity_engine.v` | 4 级流水线 IoU 计算，DSP48E1 乘累加 | 8 DSP48E1 |
+| AXI4-Lite 从设备 | `axi_lite_slave.v` | 12 寄存器 PS-PL 接口 | <1% BRAM |
+| BRAM 阈值存储 | `bram_threshold.v` | 双端口阈值/权重存储 | 2×36Kb BRAM |
+| PL 顶层模块 | `tshield_pl_top.v` | 集成 DZ+MUS+AXI+BRAM+DMA+IRQ | — |
+
+### C.3 PS 端 C HAL
+
+`tshield_hal.h/c` 提供用户空间硬件抽象层，基于 UIO + mmap 实现零拷贝 PS-PL 通信，并提供软件回退路径（当 FPGA 不可用时回退到 CPU 计算）。
+
+### C.4 仿真与综合
+
+- **仿真**：Icarus Verilog 测试平台（`tb_deadzone_comp_array.v`, `tb_mus_similarity_engine.v`）
+- **综合**：Vivado 自动化 TCL 脚本（`create_vivado_project.tcl`），目标 Zynq-7020
+- **估计资源**：LUT ~8K, FF ~5K, DSP48E1 ~40, BRAM ~4
+
+---
+
+## Appendix D：TOMAS Dashboard 可视化平台（2026-06-17 新增）
+
+### D.1 系统架构
+
+TOMAS Dashboard 是一个基于 **Vite + React 18 + TypeScript + Tailwind CSS** 的 Web 可视化平台，提供 TOMAS 系统的全方位监控与交互界面。
+
+前端通过 REST API 与 `server.py` Flask 后端通信，后端连接 SQLite 数据库和 T-Processor/T-Shield 模块。
+
+### D.2 功能模块
+
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| Dashboard | `/` | 8 子系统状态卡片 + 活动时间线 |
+| Chat | `/chat` | EML 路由推理 + 翻译官/作家模式切换 |
+| Distill | `/distill` | LLM 蒸馏 + 冲突检测 + 图谱可视化 + DIKWP 饼图 |
+| WorldModel | `/worldmodel` | Three.js 3D 场景查看器 — DIKWP 颜色映射 + ℐ 值球体 |
+| TShield | `/tshield` | T-Shield 三机制监控 + batch 推理 + 性能分析 |
+| Audit | `/audit` | T-Proc 死零审计 / Spatial Dead-Zero / G_ego 三标签 |
+| Memory | `/memory` | MemOS 记忆搜索 + ψ-锚详情 + MUS 双存指示 |
+| Firewall | `/firewall` | 语义防火墙日志 + 12 模型路由器双标签 |
+| Zynq | `/zynq` | RTL 模块状态 + 资源占用 + 寄存器查看 |
+| Settings | `/settings` | 系统配置 + API Key 管理 |
+
+### D.3 技术栈
+
+- **前端**：React 18 + TypeScript 5 + Vite 6 + Tailwind CSS 4
+- **状态管理**：Zustand（4 个 store：app/dashboard/chat/tshield）
+- **路由**：React Router v6（HashRouter）
+- **3D 渲染**：Three.js + @react-three/fiber
+- **图表**：D3.js 力导向图
+- **HTTP**：Fetch API + 超时/中断/错误处理
+- **构建产物**：62 模块 → 710KB JS → 194KB gzip
+
+### D.4 后端 API
+
+`server.py` 提供 23+ REST 端点，覆盖以下模块：
+
+| API 前缀 | 模块 | 端点数 |
+|----------|------|--------|
+| `/api/dashboard` | 系统概览 | 2 |
+| `/api/chat` | 聊天推理 | 3 |
+| `/api/distill` | 蒸馏管线 | 3 |
+| `/api/tshield` | T-Shield | 3 |
+| `/api/audit` | 审计监控 | 3 |
+| `/api/memory` | MemOS 记忆 | 3 |
+| `/api/firewall` | 防火墙 + 路由 | 4 |
+| `/api/ido` | IDO 五元素 | 3 |
+| `/api/fde` | FDE 本体 | 2 |
+| `/api/dual-timeline` | 双时间维度 | 2 |
+| `/api/itot` | IT-OT 翻译 | 2 |
+
+---
 
 ## 参考文献 (References)
 
@@ -749,7 +715,7 @@ AnyDepth 教视觉"同一权重想多快多快想多准多准"（弹性感知极
 >
 > **项目主页**: TOMAS-AGI v2.0 (V3 混合推理)
 >
-> **代码仓库**: `tomas_agi/` — 40 模块, ~800K 代码, 42/42 完整性
+> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 598/598 测试通过
 >
 > **许可证**: Apache License 2.0 — 详见项目根目录 [LICENSE](../LICENSE) 文件
 >

@@ -832,3 +832,265 @@ deepseek-chat/
 ```
 
 ---
+
+## 11. T-Processor v1.0 + T-Shield 认知安全层（2026-06-17 新增）
+
+### 11.1 T-Processor v1.0 硬件仿真器
+
+| 类 | 功能 | 对应硬件 |
+|------|------|-------------|
+| `RRAMCrossbar` | Crossbar 前向传播（I_out = V_in · G） | RRAM 忆阻阵列 |
+| `DeadZeroComparator` | I_out < θ_dead ⇒ 输出熔断 | Dead-Zone 比较器 |
+| `MUSArbiter` | 两路电流近似且矛盾 ⇒ MUS_FLAG 置位 | MUS 双存触发器 |
+| `KSnapScheduler` | 按 ℐ 梯度事件驱动唤醒/休眠 | κ-Snap 调度器 |
+| `TProcessorV1` | 统一流水线（Crossbar→DZ→MUS→κ-Snap） | T-Processor v1.0 全芯片 |
+| `SiliconPhotonicsInterface` | 传感器直连快路径（未来扩展） | 硅光接口 |
+
+### 11.2 T-Shield 认知安全层
+
+| 类 | 功能 |
+|------|------|
+| `ISceneEstimator` | 估计 ℐ(scene)（可插拔：simple / OOD-net） |
+| `DeadZeroGraft` | Dead-Zero 检查与 HOLD 返回 |
+| `MUSBoxMarker` | MUS 双框标记（IoU + score_diff） |
+| `KSnapScheduler` | κ-Snap 按 ℐ 调度 Depth-Config |
+| `TShieldWrapper` | 统一流水线封装（估计→检查→调度→检测→标记） |
+
+### 11.3 集成类
+
+| 类 | 功能 |
+|------|------|
+| `TProcessorV1WithTShield` | T-Processor + T-Shield 联合推理（tick_with_shield） |
+
+### 11.4 文件清单
+
+```
+tomas_agi/sim/
+├── tprocessor_sim.py                  # T-Processor v1.0 仿真器
+├── tshield_wrapper.py                 # T-Shield 认知安全层
+├── processor_tshield_integration.py   # 集成包装器
+```
+
+---
+
+## 12. Zynq-7000 RTL 硬件加速（2026-06-17 新增）
+
+### 12.1 架构概述
+
+T-Shield PL 端运行于 Xilinx Zynq-7000（XC7Z020），PS 端运行 Linux，通过 AXI4-Lite 接口通信。
+
+```
+┌────────────────────────────────────────────────┐
+│                PS (ARM Cortex-A9)               │
+│  tshield_hal.c (UIO/mmap + 软件回退)            │
+│  Flask API → ioctl → /dev/uio0                  │
+├────────────────────────────────────────────────┤
+│              AXI4-Lite (12 寄存器)              │
+├────────────────────────────────────────────────┤
+│                PL (Artix-7 FPGA)                │
+│  ┌──────────┐  ┌────────────┐  ┌───────────┐  │
+│  │ DZ Comp  │  │ MUS Sim    │  │ BRAM      │  │
+│  │ Array    │→ │ Engine     │  │ Threshold │  │
+│  │ (32/clk) │  │ (DSP48E1)  │  │ (Dual)    │  │
+│  └──────────┘  └────────────┘  └───────────┘  │
+│              tshield_pl_top.v                    │
+└────────────────────────────────────────────────┘
+```
+
+### 12.2 文件清单
+
+```
+tomas_agi/rtl/
+├── deadzone_comp_array.v          # Dead-Zone 并行比较器阵列 (32 值/周期)
+├── mus_similarity_engine.v        # MUS 流水线相似度引擎 (DSP48E1)
+├── axi_lite_slave.v               # AXI4-Lite 从设备 (12 个寄存器)
+├── bram_threshold.v               # BRAM 双端口阈值存储
+├── tshield_pl_top.v               # PL 顶层模块
+├── tb_deadzone_comp_array.v       # DZ 测试平台
+├── tb_mus_similarity_engine.v     # MUS 测试平台
+├── create_vivado_project.tcl      # Vivado 自动化脚本 (Zynq-7020)
+├── tshield_hal.h                  # PS 端 C HAL 头文件
+└── tshield_hal.c                  # PS 端 C HAL 实现
+```
+
+### 12.3 资源估算（Zynq-7020）
+
+| 模块 | LUT | FF | BRAM | DSP |
+|------|-----|-----|------|-----|
+| DZ Comp Array | ~800 | ~400 | 0 | 0 |
+| MUS Sim Engine | ~1200 | ~800 | 0 | 3 |
+| AXI Lite Slave | ~200 | ~100 | 0 | 0 |
+| BRAM Threshold | 0 | 0 | 2 | 0 |
+| **合计** | ~2200 | ~1300 | 2 | 3 |
+| **Zynq-7020 总量** | 53200 | 106400 | 140 | 220 |
+| **利用率** | 4.1% | 1.2% | 1.4% | 1.4% |
+
+---
+
+## 13. TOMAS Dashboard（2026-06-17 新增）
+
+### 13.1 概述
+
+TOMAS Dashboard 是独立于 deepseek-chat 前端的全新 Web UI，基于 Vite + React 18 + TypeScript + Tailwind CSS，对接 server.py Flask 后端 API。
+
+### 13.2 技术栈
+
+| 层 | 选型 | 说明 |
+|----|------|------|
+| 构建工具 | Vite 5 | 快速 HMR |
+| 框架 | React 18 | 函数组件 + Hooks |
+| 语言 | TypeScript 5.5 | 严格模式 |
+| 样式 | Tailwind CSS 3.4 | 自定义主题（dark/light） |
+| 路由 | React Router v6 | Hash 路由 |
+| 状态管理 | Zustand | 轻量 |
+| 3D 渲染 | Three.js | WorldModel 页面 |
+| 图表 | D3.js + SVG 自绘 | 仪表盘圆环 |
+
+### 13.3 页面清单（10 页）
+
+| 路径 | 页面 | 对接 API |
+|------|------|----------|
+| `/` | Dashboard | `GET /api/health`, `GET /api/tprocessor/stats` |
+| `/chat` | Chat | `GET/POST /api/sessions` |
+| `/distill` | Distill | `GET/POST /api/corpus`, `GET/POST /api/conflicts` |
+| `/world` | WorldModel | `GET /api/knowledge/graph` |
+| `/tshield` | TShield | `GET /api/tshield/demo`, `POST /api/tshield/infer` |
+| `/audit` | Audit | `GET /api/tprocessor/stats` |
+| `/memory` | Memory | `GET /api/knowledge/triples` |
+| `/firewall` | Firewall | `GET /api/ido/stats`, `GET /api/itot/kpi` |
+| `/zynq` | Zynq | `GET /api/tprocessor/stats` |
+| `/settings` | Settings | `GET/POST /api/settings` |
+
+### 13.4 文件清单
+
+```
+tomas-dashboard/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── tailwind.config.js
+├── index.html
+├── src/
+│   ├── main.tsx
+│   ├── App.tsx
+│   ├── index.css
+│   ├── types/index.ts
+│   ├── api/client.ts
+│   ├── api/endpoints.ts
+│   ├── store/appStore.ts
+│   ├── store/dashboardStore.ts
+│   ├── store/chatStore.ts
+│   ├── store/tshieldStore.ts
+│   ├── components/layout/Layout.tsx
+│   ├── components/layout/Sidebar.tsx
+│   ├── components/layout/Header.tsx
+│   ├── components/ui/StatusCard.tsx
+│   ├── components/ui/StatusBadge.tsx
+│   ├── components/ui/Loading.tsx
+│   ├── pages/Dashboard.tsx
+│   ├── pages/Chat.tsx
+│   ├── pages/Distill.tsx
+│   ├── pages/WorldModel.tsx
+│   ├── pages/TShield.tsx
+│   ├── pages/Audit.tsx
+│   ├── pages/Memory.tsx
+│   ├── pages/Firewall.tsx
+│   ├── pages/Zynq.tsx
+│   └── pages/Settings.tsx
+└── dist/                          # 构建产物
+```
+
+---
+
+## 14. Flask API 服务器（server.py，2026-06-16 新增）
+
+### 14.1 端点概览
+
+server.py 提供 23+ REST API 端点，供 TOMAS Dashboard 和 deepseek-chat 前端调用：
+
+| 分组 | 端点 | 方法 | 功能 |
+|------|------|------|------|
+| 基础 | `/api/health` | GET | 健康检查 |
+| T-Processor | `/api/tprocessor/stats` | GET | T-Proc 统计 |
+| T-Shield | `/api/tshield/demo` | GET | T-Shield Demo |
+| T-Shield | `/api/tshield/infer` | POST | T-Shield 推理 |
+| IDO | `/api/ido/stats` | GET | IDO 五元素统计 |
+| IDO | `/api/ido/evaluate` | POST | 假设评估 |
+| FDE | `/api/fde/build` | POST | 本体构建 |
+| DualTimeline | `/api/dualtimeline/align` | POST | 时间对齐 |
+| ITOT | `/api/itot/kpi` | GET | IT-OT KPI |
+| 知识 | `/api/knowledge/graph` | GET | EML 图谱数据 |
+| 知识 | `/api/knowledge/triples` | GET | 三元组查询 |
+| 设置 | `/api/settings` | GET/POST | 系统配置 |
+| 会话 | `/api/sessions` | GET/POST | 聊天会话 |
+| 语料 | `/api/corpus` | GET/POST | 蒸馏语料 |
+| 冲突 | `/api/conflicts` | GET/POST | 知识冲突 |
+
+### 14.2 启动方式
+
+```bash
+cd tomas_agi/sim
+python server.py --port 5000
+```
+
+---
+
+## 15. 新增 Python 模块（2026-06-16~17）
+
+### 15.1 模块清单
+
+| 文件 | 功能 | 测试 |
+|------|------|------|
+| `dead_zero_mus.py` | 死零/MUS/κ-Snap 机制 | test_tcci |
+| `nasga_octonion.py` | NASGA 八元数运算模块 | test_nasga |
+| `tcci_huashan_test.py` | TCCI-华山测试 v1 独立运行器 | test_tcci |
+| `memos_fusion.py` | TOMAS-MemOS 融合层（五点升维） | test_memos |
+| `psi_anchor.py` | ψ-锚数据结构与管理器 | test_memos |
+| `memos_integration.py` | Token Bridge 集成包装器 | test_memos |
+| `contradiction_detector.py` | 三层矛盾检测器 | test_contradiction |
+| `dikwp_mapper.py` | DIKWP 五层映射器 | DIKWP tests |
+| `semantic_math.py` | 语义数学运算 | DIKWP tests |
+| `dikwp_ac.py` | 人工意识（AC）模块 | DIKWP tests |
+| `agent_audit.py` | DAAP 审计代理 | DIKWP tests |
+| `dikwp_eml_bridge.py` | DIKWP↔EML 桥接 | DIKWP tests |
+| `causet_bridge.py` | Wolfram超图↔EML桥接 | test_causet_wsc |
+| `hodge_operator.py` | TOMAS-WSC融合算子 L+λΠ | test_causet_wsc |
+| `semantic_firewall.py` | 输入/输出语义防火墙 | test_causet_wsc |
+| `palantir_mapper.py` | 本体→EML超图映射 | test_causet_wsc |
+| `scada_daap.py` | 真实SCADA环境DAAP审计 | test_hyworld_sai |
+| `hyworld_bridge.py` | HY World 2.0 四阶段管道桥接 | test_hyworld_sai |
+| `sai_tproc.py` | T-Processor 后审计层 | test_hyworld_sai |
+| `spatial_dead_zero.py` | 3D几何物理接地审计 | test_hyworld_sai |
+| `ido_bridge.py` | IDO五元素模板桥接 | test_ido |
+| `fde_builder.py` | FDE道法术器本体构建器 | test_fde_dual_itot |
+| `dual_timeline.py` | 双时间维度引擎 | test_fde_dual_itot |
+| `itot_bridge.py` | IT-OT翻译桥 | test_fde_dual_itot |
+| `router.py` | TOMAS Router 多模型路由器 | test_router |
+| `eml_injector.py` | EML 执行上下文注入器 v2.0 | test_router |
+| `server.py` | Flask API 服务器 | 集成测试 |
+| `tprocessor_sim.py` | T-Processor v1.0 硬件仿真器 | test_tprocessor_tshield |
+| `tshield_wrapper.py` | T-Shield 认知安全层 | test_tprocessor_tshield |
+| `processor_tshield_integration.py` | T-Proc+T-Shield 集成 | test_tprocessor_tshield |
+
+### 15.2 测试统计
+
+| 测试文件 | 通过 |
+|----------|------|
+| test_token_bridge.py | 8 |
+| test_eml_dimred.py | 20 |
+| test_router.py | 27 |
+| test_tcci.py | 15 |
+| test_nasga.py | 17 |
+| test_memos.py | 16 |
+| test_contradiction.py | 19 |
+| test_causet_wsc.py | 57 |
+| test_hyworld_sai.py | 76 |
+| test_ido.py | 105 |
+| test_fde_dual_itot.py | 86 |
+| DIKWP/AC tests | 54 |
+| test_tprocessor_tshield.py | 39+2 |
+| **总计** | **598 passed + 2 skipped** |
+
+---
+
+*文档结束 — 架构师：高见远（Gao）· 更新：2026-06-17*
