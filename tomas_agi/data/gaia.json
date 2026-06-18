@@ -1,0 +1,23 @@
+[
+  {
+    "task_id": "gaia_001",
+    "Level": 1,
+    "Question": "What is the capital of France?",
+    "Answer": "Paris",
+    "Files": []
+  },
+  {
+    "task_id": "gaia_002",
+    "Level": 2,
+    "Question": "Given the numbers [3, 1, 4, 1, 5], what is the median?",
+    "Answer": "3",
+    "Files": []
+  },
+  {
+    "task_id": "gaia_003",
+    "Level": 3,
+    "Question": "A trader buys 100 shares at $50 each. The stock price rises to $55. What is the profit if all shares are sold?",
+    "Answer": "$500",
+    "Files": []
+  }
+]

@@ -1,0 +1,3 @@
+instance_id,repo,has_patch,prediction,correct,error,duration_sec
+django__django-12345,django/django,True,[PLACEHOLDER] Would query TOMAS with: The validate_email function incorrectly rejects valid email addresses with numeric TLDs....,,,0.0
+sphinx-doc__sphinx-67890,sphinx-doc/sphinx,True,[PLACEHOLDER] Would query TOMAS with: Autodoc fails to document dataclass fields with default factory....,,,0.0

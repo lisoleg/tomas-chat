@@ -1,0 +1,4 @@
+task_id,level,has_answer,prediction,correct,error,duration_sec
+gaia_001,1,True,[PLACEHOLDER] Would query TOMAS with: What is the capital of France?...,,,0.0
+gaia_002,2,True,"[PLACEHOLDER] Would query TOMAS with: Given the numbers [3, 1, 4, 1, 5], what is the median?...",,,0.0
+gaia_003,3,True,[PLACEHOLDER] Would query TOMAS with: A trader buys 100 shares at $50 each. The stock price rises to $55. What is the profit if all shares...,,,0.0
