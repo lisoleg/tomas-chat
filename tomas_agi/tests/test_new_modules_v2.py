@@ -90,10 +90,11 @@ class TestComputeIWeight:
 
     def test_import(self):
         """Module imports successfully."""
-        from compute_i_weight import compute_i_weight, DB_PATH, BATCH_SIZE
+        from compute_i_weight import compute_i_weight, DB_PATH, BATCH_SIZE, DEFAULT_I_WEIGHT
         assert callable(compute_i_weight)
         assert "tomas.db" in DB_PATH or DB_PATH
         assert BATCH_SIZE > 0
+        assert DEFAULT_I_WEIGHT == 1.0
 
     def test_dry_run_on_small_db(self):
         """Dry run computes stats without modifying database."""
@@ -110,15 +111,15 @@ class TestComputeIWeight:
                     subject TEXT,
                     predicate TEXT,
                     object TEXT,
-                    i_weight REAL DEFAULT 1.0
+                    i_weight FLOAT DEFAULT 1.0 NOT NULL
                 )
             """)
             test_data = [
-                ("Python", "is-a", "language", None),
-                ("Python", "created-by", "Guido", None),
-                ("Python", "used-for", "AI", None),
-                ("Java", "is-a", "language", None),
-                ("Rust", "is-a", "language", 1.5),
+                ("Python", "is-a", "language", 1.0),
+                ("Python", "created-by", "Guido", 1.0),
+                ("Python", "used-for", "AI", 1.0),
+                ("Java", "is-a", "language", 1.0),
+                ("Rust", "is-a", "language", 1.5),  # Already has non-default weight
             ]
             for s, p, o, w in test_data:
                 db.execute(
@@ -133,14 +134,15 @@ class TestComputeIWeight:
             db = sqlite3.connect(db_path)
             weights = db.execute("SELECT i_weight FROM knowledge_triples WHERE subject='Python'").fetchall()
             db.close()
+            # Dry run should not modify
             for w in weights:
-                assert w[0] is None
+                assert w[0] == 1.0
 
         finally:
             os.unlink(db_path)
 
     def test_actual_update_on_small_db(self):
-        """Actual update modifies i_weight for NULL rows."""
+        """Actual update modifies i_weight for default-value rows."""
         from compute_i_weight import compute_i_weight
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -154,14 +156,14 @@ class TestComputeIWeight:
                     subject TEXT,
                     predicate TEXT,
                     object TEXT,
-                    i_weight REAL DEFAULT 1.0
+                    i_weight FLOAT DEFAULT 1.0 NOT NULL
                 )
             """)
             test_data = [
-                ("Python", "is-a", "language", None),
-                ("Python", "created-by", "Guido", None),
-                ("Python", "used-for", "AI", None),
-                ("Java", "is-a", "language", None),
+                ("Python", "is-a", "language", 1.0),
+                ("Python", "created-by", "Guido", 1.0),
+                ("Python", "used-for", "AI", 1.0),
+                ("Java", "is-a", "language", 1.0),
             ]
             for s, p, o, w in test_data:
                 db.execute(
@@ -182,11 +184,13 @@ class TestComputeIWeight:
             ).fetchall()
             db.close()
 
+            # Python appears 3 times -> weight = 1.0 + ln(1+3)/10 ≈ 1.1386
             expected_python = 1.0 + math.log(1 + 3) / 10.0
             for w in python_weights:
                 assert w[0] is not None
                 assert w[0] == pytest.approx(expected_python, rel=1e-4)
 
+            # Java appears 1 time -> weight = 1.0 + ln(1+1)/10 ≈ 1.0693
             expected_java = 1.0 + math.log(1 + 1) / 10.0
             for w in java_weights:
                 assert w[0] is not None
@@ -196,7 +200,7 @@ class TestComputeIWeight:
             os.unlink(db_path)
 
     def test_preserves_existing_weights(self):
-        """Rows with existing i_weight are not modified."""
+        """Rows with non-default i_weight are not modified (without --recalculate)."""
         from compute_i_weight import compute_i_weight
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -210,10 +214,11 @@ class TestComputeIWeight:
                     subject TEXT,
                     predicate TEXT,
                     object TEXT,
-                    i_weight REAL
+                    i_weight FLOAT DEFAULT 1.0 NOT NULL
                 )
             """)
-            db.execute("INSERT INTO knowledge_triples (subject, predicate, object, i_weight) VALUES ('A', 'b', 'c', NULL)")
+            # One with default, one with custom value
+            db.execute("INSERT INTO knowledge_triples (subject, predicate, object, i_weight) VALUES ('A', 'b', 'c', 1.0)")
             db.execute("INSERT INTO knowledge_triples (subject, predicate, object, i_weight) VALUES ('A', 'd', 'e', 2.5)")
             db.commit()
             db.close()
@@ -224,8 +229,47 @@ class TestComputeIWeight:
             weights = db.execute("SELECT i_weight FROM knowledge_triples WHERE subject='A' ORDER BY id").fetchall()
             db.close()
 
-            assert weights[0][0] is not None
-            assert weights[1][0] == 2.5
+            # First row should be updated from 1.0, second should remain 2.5
+            assert weights[0][0] != 1.0  # Updated
+            assert weights[1][0] == 2.5  # Unchanged
+
+        finally:
+            os.unlink(db_path)
+
+    def test_recalculate_all(self):
+        """--recalculate updates ALL rows including those with non-default weights."""
+        from compute_i_weight import compute_i_weight
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = tmp.name
+
+        try:
+            db = sqlite3.connect(db_path)
+            db.execute("""
+                CREATE TABLE knowledge_triples (
+                    id INTEGER PRIMARY KEY,
+                    subject TEXT,
+                    predicate TEXT,
+                    object TEXT,
+                    i_weight FLOAT DEFAULT 1.0 NOT NULL
+                )
+            """)
+            db.execute("INSERT INTO knowledge_triples (subject, predicate, object, i_weight) VALUES ('A', 'b', 'c', 2.5)")
+            db.execute("INSERT INTO knowledge_triples (subject, predicate, object, i_weight) VALUES ('A', 'd', 'e', 1.0)")
+            db.commit()
+            db.close()
+
+            # Recalculate ALL rows
+            compute_i_weight(db_path=db_path, dry_run=False, recalculate=True)
+
+            db = sqlite3.connect(db_path)
+            weights = db.execute("SELECT i_weight FROM knowledge_triples WHERE subject='A' ORDER BY id").fetchall()
+            db.close()
+
+            # Both rows should have the same computed weight (subject A appears twice)
+            expected = 1.0 + math.log(1 + 2) / 10.0
+            for w in weights:
+                assert w[0] == pytest.approx(expected, rel=1e-4)
 
         finally:
             os.unlink(db_path)
