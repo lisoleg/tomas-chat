@@ -20,7 +20,8 @@ def test_endpoint(base_url: str, path: str, description: str,
                   expected_status: int = 200,
                   check_json: bool = False,
                   json_check: dict = None,
-                  accept_unavailable: bool = False) -> bool:
+                  accept_unavailable: bool = False,
+                  timeout: int = None) -> bool:
     """
     测试单个 API 端点
 
@@ -38,7 +39,7 @@ def test_endpoint(base_url: str, path: str, description: str,
     """
     url = f"{base_url}{path}"
     try:
-        response = requests.get(url, timeout=TIMEOUT)
+        response = requests.get(url, timeout=timeout or TIMEOUT)
         # 检查状态码
         if accept_unavailable and response.status_code in (503, 404):
             # 服务不可用也算通过（表示端点存在但模块未启动）
@@ -70,7 +71,8 @@ def test_endpoint(base_url: str, path: str, description: str,
         print(f"  ❌ FAIL: {description} ({path}) → 连接失败（服务器未启动）")
         return False
     except requests.exceptions.Timeout:
-        print(f"  ❌ FAIL: {description} ({path}) → 请求超时（{TIMEOUT}s）")
+        t = timeout or TIMEOUT
+        print(f"  ❌ FAIL: {description} ({path}) → 请求超时（{t}s）")
         return False
     except Exception as e:
         print(f"  ❌ FAIL: {description} ({path}) → 异常: {e}")
@@ -81,8 +83,12 @@ def main():
     parser = argparse.ArgumentParser(description="测试 TOMAS AGI Flask API 端点")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL,
                         help=f"Flask 服务器基础 URL (默认: {DEFAULT_BASE_URL})")
+    parser.add_argument("--timeout", type=int, default=30,
+                        help=f"请求超时秒数 (默认: 30)")
     args = parser.parse_args()
     base_url = args.base_url.rstrip("/")
+    global TIMEOUT
+    TIMEOUT = args.timeout
 
     print(f"=== TOMAS AGI API 端点测试 ===")
     print(f"基础 URL: {base_url}")
@@ -96,11 +102,11 @@ def main():
         ("/api/sessions", "会话列表", True, None),
         ("/api/knowledge", "知识图谱概览", True, None),
 
-        # 知识图谱子端点
-        ("/api/knowledge/triples?limit=5", "知识三元组", True, None),
-        ("/api/knowledge/graph?limit=10", "知识图谱数据", True, None),
-        ("/api/knowledge/subjects", "知识主体列表", True, None),
-        ("/api/knowledge/predicates", "知识谓词列表", True, None),
+        # 知识图谱子端点（大表查询, 超时 30s）
+        ("/api/knowledge/triples?limit=5", "知识三元组", True, None, False, 30),
+        ("/api/knowledge/graph?limit=10", "知识图谱数据", True, None, False, 30),
+        ("/api/knowledge/subjects?limit=100", "知识主体列表", True, None, False, 30),
+        ("/api/knowledge/predicates?limit=100", "知识谓词列表", True, None, False, 30),
 
         # 处理器端点
         ("/api/tprocessor/stats", "T-Processor 统计", True, None),
@@ -124,6 +130,7 @@ def main():
         check_json = ep[2] if len(ep) > 2 else False
         json_check = ep[3] if len(ep) > 3 else None
         accept_unavailable = ep[4] if len(ep) > 4 else False
+        timeout = ep[5] if len(ep) > 5 else None
 
         result = test_endpoint(
             base_url=base_url,
@@ -133,6 +140,7 @@ def main():
             check_json=check_json,
             json_check=json_check,
             accept_unavailable=accept_unavailable,
+            timeout=timeout,
         )
         if result:
             passed += 1

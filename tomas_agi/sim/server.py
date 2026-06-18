@@ -403,8 +403,12 @@ def get_triples():
         if min_i_weight > 0:
             q = q.filter(KnowledgeTriple.i_weight >= min_i_weight)
 
-        total = q.count()
-        rows = q.order_by(KnowledgeTriple.i_weight.desc()).limit(limit).offset(offset).all()
+        # 仅在有筛选条件时才 count（无筛选时全表 count 太慢）
+        if subject or predicate or obj or min_i_weight > 0:
+            total = q.count()
+        else:
+            total = -1  # 太大无法实时统计
+        rows = q.order_by(KnowledgeTriple.id.desc()).limit(limit).offset(offset).all()
 
         return jsonify({
             "success": True,
@@ -428,20 +432,30 @@ def get_triples():
 
 @app.route("/api/knowledge/subjects")
 def get_subjects():
+    limit = int(request.args.get("limit", 1000))
+    search = request.args.get("search", "")
     session = get_session()
     try:
-        rows = session.query(KnowledgeTriple.subject).distinct().order_by(KnowledgeTriple.subject).all()
-        return jsonify({"success": True, "data": [r[0] for r in rows]})
+        q = session.query(KnowledgeTriple.subject).distinct()
+        if search:
+            q = q.filter(KnowledgeTriple.subject.like(f"%{search}%"))
+        rows = q.limit(limit).all()
+        return jsonify({"success": True, "data": [r[0] for r in rows], "truncated": True, "limit": limit})
     finally:
         session.close()
 
 
 @app.route("/api/knowledge/predicates")
 def get_predicates():
+    limit = int(request.args.get("limit", 1000))
+    search = request.args.get("search", "")
     session = get_session()
     try:
-        rows = session.query(KnowledgeTriple.predicate).distinct().order_by(KnowledgeTriple.predicate).all()
-        return jsonify({"success": True, "data": [r[0] for r in rows]})
+        q = session.query(KnowledgeTriple.predicate).distinct()
+        if search:
+            q = q.filter(KnowledgeTriple.predicate.like(f"%{search}%"))
+        rows = q.limit(limit).all()
+        return jsonify({"success": True, "data": [r[0] for r in rows], "truncated": True, "limit": limit})
     finally:
         session.close()
 
@@ -889,17 +903,6 @@ def tproc_load_eml():
         eml_edges = [HyperEdgeState(e["src"], e["dst"], e["weight"]) for e in edges]
         tproc.load_eml(eml_edges)
         return jsonify({"success": True, "data": {"loaded": len(eml_edges)}})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/tprocessor/stats", methods=["GET"])
-def tproc_stats():
-    try:
-        tproc = _get_tprocessor()
-        if tproc is None:
-            return jsonify({"success": True, "data": {"status": "unavailable"}})
-        return jsonify({"success": True, "data": tproc.get_stats()})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
