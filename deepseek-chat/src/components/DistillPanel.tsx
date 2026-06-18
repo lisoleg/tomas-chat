@@ -1257,26 +1257,45 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
         {/* 统计卡片 — 始终可见 */}
         <div className="flex items-center gap-2 text-xs text-textSecondary">
           <span className="font-medium">
-            {bridgeState.loaded ? '📊 知识库统计' : phase === 'done' ? '📊 蒸馏统计' : '📊 知识库统计'}
+            {bridgeState.loaded ? '📊 知识库统计' : graphData && graphData.vertices.length > 0 ? '📊 图谱统计（API）' : phase === 'done' ? '📊 蒸馏统计' : '📊 知识库统计'}
           </span>
           {bridgeState.loaded && (
             <span className="text-textSecondary/60">{bridgeState.fileName}</span>
           )}
+          {!bridgeState.loaded && graphData && graphData.vertices.length > 0 && (
+            <span className="text-textSecondary/60">后端图谱数据</span>
+          )}
           {!bridgeState.loaded && phase === 'done' && (
             <span className="text-textSecondary/60">蒸馏结果</span>
           )}
-          {!bridgeState.loaded && phase !== 'done' && (
+          {!bridgeState.loaded && !(graphData && graphData.vertices.length > 0) && phase !== 'done' && (
             <span className="text-textSecondary/40">等待加载…</span>
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <StatCard
             label="概念数"
-            value={bridgeState.loaded ? String(bridgeState.vertexCount) : phase === 'done' ? String(concepts.length) : '—'}
+            value={
+              bridgeState.loaded
+                ? String(bridgeState.vertexCount)
+                : graphData && graphData.vertices.length > 0
+                  ? String(graphData.vertices.length)
+                  : phase === 'done'
+                    ? String(concepts.length)
+                    : '—'
+            }
           />
           <StatCard
             label="关系数"
-            value={bridgeState.loaded ? String(bridgeState.edgeCount) : phase === 'done' ? String(relations.length) : '—'}
+            value={
+              bridgeState.loaded
+                ? String(bridgeState.edgeCount)
+                : graphData && graphData.edges.length > 0
+                  ? String(graphData.edges.length)
+                  : phase === 'done'
+                    ? String(relations.length)
+                    : '—'
+            }
           />
           <StatCard
             label="语料条数 ▾"
@@ -1286,11 +1305,25 @@ export function DistillPanel({ apiKey, externalBridgeClient, externalEMLState }:
           />
           <StatCard
             label="𝕀 均值"
-            value={bridgeState.loaded ? bridgeState.avgDelta.toFixed(3) : phase === 'done' ? avgInfoExistence.toFixed(3) : '—'}
+            value={
+              bridgeState.loaded
+                ? bridgeState.avgDelta.toFixed(3)
+                : graphData && graphData.vertices.length > 0
+                  ? (graphData.vertices.reduce((s, v) => s + v.delta, 0) / graphData.vertices.length).toFixed(3)
+                  : phase === 'done'
+                    ? avgInfoExistence.toFixed(3)
+                    : '—'
+            }
           />
           <StatCard
             label="EML 大小"
-            value={bridgeState.loaded ? formatFileSize(bridgeState.fileSize) : phase === 'done' ? formatFileSize(emlSize) : '—'}
+            value={
+              bridgeState.loaded
+                ? formatFileSize(bridgeState.fileSize)
+                : phase === 'done'
+                  ? formatFileSize(emlSize)
+                  : '—'
+            }
           />
         </div>
 

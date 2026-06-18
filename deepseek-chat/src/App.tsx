@@ -23,6 +23,10 @@ import { useToast } from './components/Toast'
 import type { AppMode, ChatEMLState } from './types'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
+// 默认自动加载的 EML 文件（OwnThink 蒸馏知识库）
+const DEFAULT_EML_URL = '/ownthink_sample.eml'
+const DEFAULT_EML_NAME = 'ownthink_sample.eml'
+
 export default function App() {
   const { error: toastError } = useToast()
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false)
@@ -76,6 +80,43 @@ export default function App() {
   useEffect(() => {
     if (!chat.apiKey) setApiKeyModalOpen(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 自动加载默认 EML 知识库（OwnThink 蒸馏数据）
+  useEffect(() => {
+    let cancelled = false
+    async function autoLoadDefaultEML() {
+      try {
+        const resp = await fetch(DEFAULT_EML_URL)
+        if (!resp.ok) {
+          console.warn(`[App] 默认 EML 加载失败: ${resp.status}`)
+          return
+        }
+        const buffer = await resp.arrayBuffer()
+        if (cancelled) return
+
+        const graph = loadEMLFromBuffer(buffer)
+        bridgeClient.current.loadEML(buffer)
+
+        const avgDelta = graph.vertices.length > 0
+          ? graph.vertices.reduce((s, v) => s + v.delta, 0) / graph.vertices.length : 0
+
+        setEmlState({
+          loaded: true,
+          fileName: DEFAULT_EML_NAME,
+          fileSize: buffer.byteLength,
+          vertexCount: graph.vertices.length,
+          edgeCount: graph.edges.length,
+          avgDelta
+        })
+        console.log(`[App] 自动加载默认 EML 成功: ${DEFAULT_EML_NAME}, ${graph.vertices.length} 顶点, ${graph.edges.length} 边`)
+      } catch (err) {
+        // 静默失败，不影响主流程（用户可手动上传）
+        console.warn('[App] 自动加载默认 EML 失败（非致命）:', err)
+      }
+    }
+    autoLoadDefaultEML()
+    return () => { cancelled = true }
   }, [])
 
   // ── Render active panel ──────────────────────────────
