@@ -4,7 +4,7 @@
 >
 > <sup>1</sup> 复合体理学研究中心（TOMAS 项目组）
 >
-> **版本**: v2.2 (V3+MemOS+T-Proc+Dashboard) | **日期**: 2026-06-17
+> **版本**: v2.3 (V3.4+ESLint+distillCache+端点测试) | **日期**: 2026-06-18
 
 ---
 
@@ -767,6 +767,88 @@ TOMAS-AGI v3.3 通过系统性的UI修复与构建优化，显著提升了前端
 3. **CRLF规范化**：修复esbuild构建误报
 4. **构建验证**：TypeScript 0错误，Vite构建1082模块全部通过
 
+### E.6 总结
+
+TOMAS-AGI v3.3 通过系统性的UI修复与构建优化，显著提升了前端稳定性与开发体验。关键改进包括：
+
+1. **对话意图检测**：避免无意义EML检索，响应质量提升
+2. **JSX语法修复**：解决Babel解析器边界问题
+3. **CRLF规范化**：修复esbuild构建误报
+4. **构建验证**：TypeScript 0错误，Vite构建1082模块全部通过
+
+---
+
+## 附录 F: v3.4 代码质量与数据层优化 (2026-06-18)
+
+### F.1 ESLint + Prettier 代码风格统一
+
+**配置**：
+- ESLint 8.x + `@typescript-eslint/parser`，规则集：eslint:recommended、@typescript-eslint/recommended、react/recommended、react-hooks/recommended、prettier
+- Prettier 3.x：单引号、分号、100 字符宽度、2 空格缩进、LF 换行
+- 新增 npm scripts：`lint`、`lint:fix`、`format`、`format:check`
+
+**修复**（0 errors / 170 warnings）：
+- 8 处 `no-empty` 空块语句（sessionStore、corpusStore、knowledgeStore）
+- `no-constant-condition`（deepseek.ts SSE 循环）
+- `react/no-unescaped-entities`（AuditMonitor.tsx 引号转义）
+- `react-hooks/rule-of-hooks`（DIKWPPieChart.tsx useState 在 early return 前）
+
+### F.2 源码 Bug 修复
+
+**Bug 1 — retryFetch 的 HTTP 4xx 不重试逻辑失效**：
+`src/api/distillCache.ts` 中，`retryFetch` 函数在 catch 块捕获 `throw new Error()` 抛出的异常时，会错误地重试 HTTP 400/401/403 响应。修复方法：将 throw 移到 catch 块外部，关闭代码路径。
+
+**Bug 2 — dikwDistribution 字段名不一致**：
+`sessionStore.ts` 和 `distillCache.ts` 中使用 `dikwDistribution`（小写 k），与 DIKWP 标准命名（大写 K）不一致。统一修复为 `dikwpDistribution`。
+
+### F.3 Flask 关键端点测试脚本
+
+创建 `tomas_agi/scripts/test_endpoints.py`，覆盖 14 个 REST 端点：
+
+| 端点 | 预期 |
+|------|------|
+| `/api/health` | 200, `{"status": "ok"}` |
+| `/api/corpus`, `/api/sessions`, `/api/knowledge` | 200, `{"success": true}` |
+| `/api/knowledge/triples`, `/api/knowledge/graph` | 200, 分页查询 |
+| `/api/tprocessor/stats`, `/api/tshield/stats` | 200, 实时统计 |
+| `/api/ido/stats`, `/api/fde/status` | 200, 接受 unavailable |
+| `/api/dual-timeline/status`, `/api/itot/kpi` | 200, 状态查看 |
+
+**特性**：argparse `--base-url` 参数、4 类异常捕获、退出码根据结果自动设置、UTF-8 中文注释。
+
+### F.4 distillCache 三级缓存与单元测试
+
+**三级数据加载**：localStorage 缓存（TTL 5 分钟）→ Flask API（3 次重试 + 指数退避）→ 内置 fallback 数据。
+
+**单元测试**：16 个 Vitest 测试用例，覆盖全部导出函数：
+
+- **缓存层**：正常读写、TTL 过期、损坏 JSON、空缓存（4 个）
+- **retryFetch**：成功、重试后成功、3 次全失败、HTTP 400/401/403 不重试、网络异常重试（7 个）
+- **checkFlaskHealth**：成功/失败（2 个）
+- **loadFromCacheOrAPI**：一级缓存命中、三级 fallback 降级（2 个）
+- **loadFallbackData**：结构完整性验证（1 个）
+
+**测试质量**：100% 函数覆盖，边缘情况充分（TTL、损坏数据、HTTP 客户端错误短路），Mock 清理规范（`beforeEach`/`afterEach` + `vi.restoreAllMocks`）。
+
+### F.5 T-Processor/T-Shield 真实数据接入
+
+将 `TProcessorPanel.tsx` 和 `TShieldPanel.tsx` 从静态 mock 数据改为实时 Flask API 调用：
+
+- **数据源**：`/api/tprocessor/stats` 和 `/api/tshield/stats`（扩展自 `server.py`）
+- **加载状态**：骨架屏 + "加载中..." 提示
+- **错误处理**：API 不可用时显示错误状态 + 重试按钮
+- **自动刷新**：5 秒轮询间隔（`setInterval`），组件卸载时清理
+
+### F.6 总结
+
+TOMAS-AGI v3.4 聚焦于代码质量基础设施与数据层可靠性提升：
+
+1. **代码质量**：ESLint + Prettier 自动化检查，0 errors
+2. **Bug 修复**：HTTP 不重试逻辑、DIKWP 字段名一致性
+3. **测试覆盖**：Flask 14 端点脚本 + distillCache 16 单元测试
+4. **数据集成**：T-Processor/T-Shield 真实 API 接入，淘汰 mock 数据
+5. **缓存优化**：三级缓存降低 API 调用频率，提升响应速度
+
 ---
 
 ## 参考文献 (References)
@@ -797,7 +879,7 @@ TOMAS-AGI v3.3 通过系统性的UI修复与构建优化，显著提升了前端
 >
 > **项目主页**: TOMAS-AGI v2.0 (V3 混合推理)
 >
-> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 598/598 测试通过
+> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 633/633 测试通过
 >
 > **许可证**: Apache License 2.0 — 详见项目根目录 [LICENSE](../LICENSE) 文件
 >

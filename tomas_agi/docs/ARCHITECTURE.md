@@ -1,6 +1,6 @@
 # TOMAS-AGI 系统架构设计文档
 
-> 版本：v3.0 | 日期：2026-06-16 | 架构师：高见远（Gao）
+> 版本：v3.4 | 日期：2026-06-18 | 架构师：高见远（Gao）
 
 ---
 
@@ -950,4 +950,36 @@ deepseek-chat/
 └── package.json
 ```
 
+### 3.6 v3.4 前端扩展 (2026-06-18)
+
+新增/修改文件：
+
+```
+deepseek-chat/
+├── .eslintrc.cjs                        # ESLint 8.x 配置（新增）
+├── .prettierrc.cjs                       # Prettier 3.x 配置（新增）
+├── vitest.config.ts                      # Vitest 配置（更新 include 模式）
+├── src/
+│   ├── api/
+│   │   ├── distillCache.ts              # 三级缓存（localStorage→API→fallback）
+│   │   ├── __tests__/
+│   │   │   └── distillCache.test.ts     # 16 个单元测试（新增）
+│   │   ├── corpusStore.ts               # 空块语句修复
+│   │   ├── knowledgeStore.ts            # 空块语句修复
+│   │   └── deepseek.ts                  # while(true) eslint-disable
+│   ├── components/
+│   │   ├── TProcessorPanel.tsx          # 真实 API 接入（/api/tprocessor/stats）
+│   │   ├── TShieldPanel.tsx             # 真实 API 接入（/api/tshield/stats）
+│   │   ├── AuditMonitor.tsx             # 引号转义修复
+│   │   ├── DIKWPPieChart.tsx            # hooks 顺序修复
+│   │   └── DistillPanel.tsx             # distillCache 集成
+│   └── store/
+│       └── sessionStore.ts              # dikwDistribution→dikwpDistribution
+├── package.json                         # npm scripts: lint/lint:fix/format/format:check
+└── scripts/
+    └── test_endpoints.py                # Flask 14 端点测试脚本（新增）
+```
+
 ---
+
+*文档结束 — 架构师：高见远（Gao）· 更新：2026-06-18*
