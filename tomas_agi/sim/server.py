@@ -995,6 +995,156 @@ def tprocessor_stats():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ==================== Subsystem Status API ====================
+
+@app.route("/api/subsystem-status", methods=["GET"])
+def subsystem_status():
+    """返回所有 TOMAS 子系统状态（供 Dashboard 使用）"""
+    try:
+        # 获取各子系统状态
+        # 注意：这里是模拟数据，实际应该从各模块获取真实状态
+        
+        subsystems = [
+            {
+                "id": "hyworld",
+                "name": "HY World 2.0",
+                "description": "腾讯混元 3D 世界模型 — 全景→轨迹→立体→镜像四阶段管道",
+                "status": "active",
+                "icon": "globe",
+                "stats": [
+                    {"label": "顶点", "value": "128"},
+                    {"label": "场景", "value": "3"},
+                ],
+            },
+            {
+                "id": "tproc",
+                "name": "T-Proc 审计",
+                "description": "SAI 后审计层 — 死零检查 / MUS 仲裁 / G_ego 日志",
+                "status": "active",
+                "icon": "audit",
+                "stats": [
+                    {"label": "通过", "value": "47"},
+                    {"label": "拒绝", "value": "3"},
+                ],
+            },
+            {
+                "id": "spatial",
+                "name": "空间死零审计",
+                "description": "3D 几何物理接地 — 重力验证 / 碰撞检测 / 空间 MUS",
+                "status": "active",
+                "icon": "shield",
+                "stats": [
+                    {"label": "接地", "value": "92%"},
+                    {"label": "死零", "value": "8%"},
+                ],
+            },
+            {
+                "id": "deadzero",
+                "name": "死零/MUS 门控",
+                "description": "核心 IP — ℐ(e) < θ_dead 拒答 / 悖论双存 / κ-Snap",
+                "status": "active",
+                "icon": "flame",
+                "stats": [
+                    {"label": "θ", "value": "0.15"},
+                    {"label": "MUS", "value": "2"},
+                ],
+            },
+            {
+                "id": "memos",
+                "name": "MemOS 融合层",
+                "description": "五点升维记忆 — 死零校验 / MUS 双存 / ψ锚 / κ-Gate / EML",
+                "status": "active",
+                "icon": "memory",
+                "stats": [
+                    {"label": "记忆", "value": "156"},
+                    {"label": "ψ锚", "value": "42"},
+                ],
+            },
+            {
+                "id": "dikwp",
+                "name": "DIKWP 五层桥接",
+                "description": "数据→信息→知识→智慧→意图 — 层分布映射与语义数学",
+                "status": "active",
+                "icon": "layers",
+                "stats": [
+                    {"label": "K层", "value": "58%"},
+                    {"label": "W层", "value": "12%"},
+                ],
+            },
+            {
+                "id": "firewall",
+                "name": "语义防火墙",
+                "description": "输入/输出双重审计 — ADC 高风险模式检测 / 6 层防护",
+                "status": "active",
+                "icon": "flame",
+                "stats": [
+                    {"label": "拦截", "value": "12"},
+                    {"label": "通过", "value": "189"},
+                ],
+            },
+            {
+                "id": "router",
+                "name": "TOMAS Router",
+                "description": "多模型路由器 — 12 家开源模型 / 置信度路由",
+                "status": "active",
+                "icon": "route",
+                "stats": [
+                    {"label": "模型", "value": "12"},
+                    {"label": "路由", "value": "93%"},
+                ],
+            },
+            {
+                "id": "tprocessor",
+                "name": "T-Processor v1.0",
+                "description": "硬件仿真器 — RRAM Crossbar / DZ 比较器 / MUS 仲裁器",
+                "status": "active",
+                "icon": "cpu",
+                "stats": [
+                    {"label": "周期", "value": "1420"},
+                    {"label": "利用率", "value": "66%"},
+                ],
+            },
+            {
+                "id": "tshield",
+                "name": "T-Shield 认知安全",
+                "description": "认知安全层 — DZ 嫁接 / MUS 双框 / κ-Snap 调度",
+                "status": "active",
+                "icon": "shield",
+                "stats": [
+                    {"label": "OOD拒绝", "value": "5"},
+                    {"label": "MUS标记", "value": "23"},
+                ],
+            },
+            {
+                "id": "ido",
+                "name": "IDO 五元素桥接",
+                "description": "C_UV/M/I/梯度流/IR 不动点 + κ²=-1 自对偶",
+                "status": "idle",
+                "icon": "brain",
+                "stats": [
+                    {"label": "假设", "value": "7"},
+                    {"label": "Tier", "value": "2"},
+                ],
+            },
+            {
+                "id": "fde",
+                "name": "FDE 道法术器",
+                "description": "ℐ-标定 / 四阶验证 / EchoContext / 工业标准接地",
+                "status": "idle",
+                "icon": "layers",
+                "stats": [
+                    {"label": "技能", "value": "4"},
+                    {"label": "标准", "value": "3"},
+                ],
+            },
+        ]
+        
+        return jsonify({"success": True, "data": {"subsystems": subsystems}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     from models import get_engine
     get_engine()

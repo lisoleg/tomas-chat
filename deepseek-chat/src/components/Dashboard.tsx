@@ -29,10 +29,62 @@ export default function Dashboard() {
   const [subsystems, setSubsystems] = useState<SubsystemCard[]>([]);
   const [activities] = useState<ActivityItem[]>(generateMockActivities());
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setSubsystems(buildSubsystemCards());
+    fetchSubsystemStatus();
   }, []);
+
+  const fetchSubsystemStatus = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('http://localhost:5000/api/subsystem-status');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      if (result.success && result.data && result.data.subsystems) {
+        const cards: SubsystemCard[] = result.data.subsystems.map((sys: any) => ({
+          id: sys.id,
+          name: sys.name,
+          description: sys.description,
+          status: sys.status as SubsystemCard['status'],
+          icon: getIcon(sys.icon),
+          stats: sys.stats,
+        }));
+        
+        setSubsystems(cards);
+      } else {
+        throw new Error(result.error || 'Failed to fetch subsystem status');
+      }
+    } catch (err) {
+      console.error('Failed to fetch subsystem status:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      // Fallback: use mock data
+      setSubsystems(buildSubsystemCards());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getIcon = (iconName: string): React.ReactNode => {
+    switch (iconName) {
+      case 'globe': return <IconGlobe className="w-5 h-5" />;
+      case 'audit': return <IconAuditLog className="w-5 h-5" />;
+      case 'shield': return <IconShield className="w-5 h-5" />;
+      case 'flame': return <IconFlame className="w-5 h-5" />;
+      case 'memory': return <IconMemory className="w-5 h-5" />;
+      case 'layers': return <IconLayers className="w-5 h-5" />;
+      case 'route': return <IconRoute className="w-5 h-5" />;
+      case 'cpu': return <IconCpu className="w-5 h-5" />;
+      case 'brain': return <IconBrain className="w-5 h-5" />;
+      default: return <IconCpu className="w-5 h-5" />;
+    }
+  };
 
   const toggleFilter = (type: string) => {
     const next = new Set(activeFilters);
@@ -66,12 +118,28 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-textPrimary">TOMAS 仪表盘</h1>
         <p className="text-sm text-textSecondary mt-1">太极OS 子系统全集 — 实时状态监控与快速入口</p>
       </div>
+
+      {/* Loading Indicator */}
+      {loading && (
+        <div className="mb-4 p-3 bg-chatBgAlt rounded-lg border border-borderSubtle/30 flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-textSecondary">正在加载子系统状态...</span>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <p className="text-sm text-red-400">⚠️ 无法连接后端 API，已切换为离线模式</p>
+          <p className="text-xs text-red-400/70 mt-1">{error}</p>
+        </div>
+      )}
 
       {/* Subsystem Grid */}
       <section className="mb-8">
