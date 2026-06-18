@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-G_ego — TOMAS G_ego 双向算子模块
-======================================
+G_ego — TOMAS G_ego 双向算子模块 (v2.0 增强版)
+==================================================
 
 Theory Source:
     "TOMAS G_ego 双向算子：Afferent/Efferent DMN映射与T-Shield集成"
@@ -30,6 +30,10 @@ Core Concepts:
        - Dead-Zero提供ℐ阈值
        - MUS确保G_ego状态稳态
 
+    6. 与NASGA集成 (v2.0 新增):
+       - Afferent模式：将感知输入嵌入八元数空间，更新EML图
+       - Efferent模式：NASGA传播，返回top-k重构超边
+
 Theorems:
     T_G1: G_ego Bidirectionality Theorem
         G_ego可以在Afferent和Efferent模式间无缝切换，
@@ -48,14 +52,17 @@ Falsifiable Predictions:
     P_G3: T-Shield G_ego异常检测率 ≥ 0.95
 
 Author: TOMAS Team
-Version: v1.0
+Version: v2.0 (增强版，集成EML超图 + Dead-Zero + NASGA)
 """
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # 可选导入（Dead-Zero/MUS 集成）
 try:
@@ -300,14 +307,35 @@ class G_egoEngine:
 
         # 3. EML图更新（如果提供了eml_graph）
         if eml_graph is not None:
-            # 添加新顶点
-            vertex_id = hash(str(perceptual_input)) % (2 ** 31)
-            if hasattr(eml_graph, "add_vertex"):
-                eml_graph.add_vertex(vertex_id, features)
-            # 添加边（连接到现有顶点）
-            if hasattr(eml_graph, "add_edge") and len(eml_graph.vertices) > 0:
-                existing_vid = list(eml_graph.vertices.keys())[0]
-                eml_graph.add_edge(existing_vid, vertex_id, weight=semantic_intensity)
+            # 使用 EMLGraph.add_node(features) 添加新节点
+            if hasattr(eml_graph, "add_node"):
+                try:
+                    node_id = eml_graph.add_node(features)
+                    # 连接到现有节点（如果有）
+                    if hasattr(eml_graph, "nodes") and len(eml_graph.nodes) > 1:
+                        existing_vid = [vid for vid in eml_graph.nodes.keys() if vid != node_id][0]
+                        eml_graph.add_edge(node_id, existing_vid, weight=semantic_intensity)
+                except Exception as e:
+                    logger.warning(f"EML图更新失败: {e}")
+            
+            # Dead-Zero 校验（如果可用）
+            if _HAS_DEAD_ZERO and self._dead_zero_detector is not None:
+                # 构造匹配边列表（用于 DeadZeroChecker.check()）
+                matched_edges = []
+                if hasattr(eml_graph, "edges"):
+                    for eid, edge in eml_graph.edges.items():
+                        matched_edges.append({
+                            "eid": eid,
+                            "nodes": [edge.src, edge.dst],
+                            "i_val": getattr(edge, "weight", 0.5),  # 使用边权重作为近似 ℐ 值
+                        })
+                dz_result = self._dead_zero_detector.check(
+                    matched_edges=matched_edges,
+                    query=str(perceptual_input.get("raw_data", ""))[:100],
+                    context={"enable_audit": True},
+                )
+                if dz_result.is_dead:
+                    logger.warning(f"Dead-Zero 触发: {dz_result.reason}")
 
         # 4. 信息损失计算
         # 简化：假设损失来自特征降维
