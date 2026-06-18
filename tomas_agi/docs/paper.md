@@ -4,13 +4,13 @@
 >
 > <sup>1</sup> 复合体理学研究中心（TOMAS 项目组）
 >
-> **版本**: v2.4 (V3.4.1+UI打磨+引擎面板设计系统统一) | **日期**: 2026-06-18
+> **版本**: v2.5 (V3.5+公理体系v2+评估框架+OwnThink 86M+) | **日期**: 2026-06-19
 
 ---
 
 ## 摘要 (Abstract)
 
-本文提出 TOMAS-AGI v2.0，一个基于**非结合谱图代数（Non-Associative Spectral Graph Algebra, NASGA）**的具身通用人工智能系统内核。系统的核心序参量是**谱折叠深度 δ**，定义为结合子范数的归一化形式：$\delta = \|[a,b,c]\| / (\|a\|\cdot\|b\|\cdot\|c\| + \varepsilon)$。我们证明了 **A1 公理**——δ 在封闭系统中守恒——并将其确立为系统的第一基本定律。系统在 $\kappa = 7$ 处达到稳态，通过 PID + 前馈 + 积分抗饱和策略实现精确锁定。TOMAS-AGI v2.0 实现了从 Python 仿真到 Linux 内核模块、CUDA GPU 加速和 FPGA RTL 的完整四层硬件加速链。代码库包含 40 个模块、约 800K 行代码，完整性自检 42/42 项全部通过。
+本文提出 TOMAS-AGI v2.0，一个基于**非结合谱图代数（Non-Associative Spectral Graph Algebra, NASGA）**的具身通用人工智能系统内核。系统的核心序参量是**谱折叠深度 δ**，定义为结合子范数的归一化形式：$\delta = \|[a,b,c]\| / (\|a\|\cdot\|b\|\cdot\|c\| + \varepsilon)$。我们证明了 **A1 公理**——δ 在封闭系统中守恒——并将其确立为系统的第一基本定律。系统在 $\kappa = 7$ 处达到稳态，通过 PID + 前馈 + 积分抗饱和策略实现精确锁定。TOMAS-AGI v2.0 实现了从 Python 仿真到 Linux 内核模块、CUDA GPU 加速和 FPGA RTL 的完整四层硬件加速链。代码库包含 79+ 个模块、约 800K 行代码，727/729 测试通过（2 skipped 需 API Key）。
 
 **V3 核心升级**：引入"翻译官 + 作家"混合推理架构——Token Bridge（LSTM/模板）处理 EML 知识图谱中的事实性查询，DeepSeek LLM（CreativeEngine）通过 φ-Gate 实时监管处理开放式创造性生成。后端数据层迁移至 SQLite + SQLAlchemy ORM（7 张表），支持 OwnThink 140M+ 三元组全量导入，通过 κ-Gate 语义剪枝（i_weight 公式）实现知识质量滤波。实验表明，φ-Gate 在物理学知识图谱上的幻觉检测一致性达 75.8%，翻译官模式可完全脱离 LLM API 运行。系统在八元数乘法、非结合 Laplacian 构建和 δ 计算等核心操作上实现了 CPU→GPU 最高 100x 加速和 CPU→FPGA 最高 400x 加速。
 
@@ -888,6 +888,104 @@ TOMAS-AGI v3.4 聚焦于代码质量基础设施与数据层可靠性提升：
 
 ---
 
+## 附录 H: 公理体系 v2 升级（2026-06-18）
+
+### H.1 κ-Snap 显影算符 (A2)
+
+κ-Snap 算符实现从潜在态到显影态的不可逆投影：$\Pi_\kappa: \mathcal{H}_{latent} \to \mathcal{H}_{MANIFESTED}$。一旦知识被 κ-Snap "显影"，其时间戳被写入偏序集，不可 Un-Snap。该机制为 EML 超图提供了时间箭头——知识一旦被确认，即成为历史不可篡改的一部分。
+
+**实现**：`ksnap_operator.py` — 投影 Π_κ、MANIFESTED 标记、Un-Snap 不可逆性验证、时间偏序集管理。
+
+### H.2 ExtendHypergraph 流体智能原语
+
+ExtendHypergraph() 实现 Append-Only 超图增长模型，支持三种操作：
+1. **extend** — 追加新知识节点（不修改已有结构）
+2. **revise** — 修订知识属性（保留历史版本）
+3. **mus_resolve** — MUS 裁决互斥知识（双存而非覆盖）
+
+该原语为 ARC-AGI-3 流体智能评估提供了基础接口——智能体可以在不破坏旧知识的前提下持续学习新模式。
+
+**实现**：`extend_hypergraph.py` — snap_gestalt、extend、revise、mus_resolve、ARC-AGI-3 入口。
+
+### H.3 NAU 刘机制
+
+NAU（Non-Associative Unification）刘机制基于八元数非结合代数实现 MUS（Mutually Unencodable Set）裁决。核心定理 Theorem 3.1 证明：在八元数非结合代数中，MUS 的存在性等价于结合子范数的局部极小值。
+
+**实现**：`nau_liu_mechanism.py` — 八元数非结合运算、Theorem 3.1 验证、MUS 裁决算法。
+
+### H.4 双链共识动力学
+
+物质链 ⊗ 意识链的双链模型：$C(t) = |\langle\Psi_m|\Psi_c\rangle|^2$ 定义为物质波函数与意识波函数的叠加态保真度。当 $C(t) < \tau_{PG}$（PG-Gate 阈值），系统进入哥德尔 CTC（Closed Timelike Curve）模式，利用暗能量项驱动链间同步。
+
+**实现**：`dual_chain_consensus.py` — 物质链⊗意识链、C(t) 计算、哥德尔 CTC、PG-Gate、暗能量驱动。
+
+### H.5 EML-Hardware Co-Design
+
+G_ego 超图跳跃操作触发 T-Core ASIC 物理重构——增量拓扑变形在 μs 级完成，16 个硬件资源协同工作，κ-Snap 不可逆提交确保硬件状态一致性。
+
+**实现**：`eml_hardware_codesign.py` — G_ego 超图跳跃→T-Core ASIC 物理重构、增量拓扑变形、16 硬件资源管理、κ-Snap 不可逆提交。
+
+---
+
+## 附录 I: 评估框架（2026-06-18）
+
+### I.1 ARC-AGI-3 评估
+
+ARC-AGI-3 评估框架支持 64×64 网格推理任务，采用 RHAE（Relative Hamming Accuracy with Epsilon）评分标准。评估覆盖四大支柱：Perception、Learning、Reasoning、Efficiency。系统提示遵循 ARC Prize 官方规范。
+
+**实现**：`arc_agi3_eval.py`（评估框架）+ `arc_api_client.py`（API 客户端，25 环境获取，需 ARC_API_KEY）。
+
+### I.2 SWE-bench Lite 评估
+
+SWE-bench Lite 包含 300 个真实 GitHub Issue 修复实例，用于评估系统的代码生成和 Bug 修复能力。评估采用 pass@1 和 pass@5 指标。
+
+**实现**：`swe_bench_eval.py` — 300 实例已下载，支持 Docker 隔离评估。
+
+### I.3 GAIA 评估
+
+GAIA 数据集获取脚本支持 HuggingFace API 和 datasets 库双模式获取。GAIA 包含多模态推理任务，需要真实世界工具使用能力。
+
+**实现**：`gaia_fetcher.py`（数据获取，需 HUGGINGFACE_TOKEN）+ `gaia_eval.py`（评估逻辑）。
+
+### I.4 TCCI-华山测试 v2
+
+TCCI-华山测试 v2 包含 10 个核心用例，覆盖：Dead-Zero 检测、MUS 裁决、MED（最小存在度）、EGO（自我指涉）、ℐ 守恒验证、G_ego 双向算子、MUS 稳态、PG 囚禁、T_Shield 防护、Heuristic Learning。
+
+**实现**：`tcci_huashan_test.py` — 10 用例全部通过。
+
+---
+
+## 附录 J: Dashboard API 真实化 + OwnThink 大规模导入（2026-06-19）
+
+### J.1 Flask API 端点扩展
+
+Flask REST API 服务器从 23 端点扩展至 56 端点，新增端点覆盖：
+- **T-Processor / T-Shield**: `/api/tprocessor/stats`、`/api/tshield/stats`、`/api/tshield/batch`、`/api/tshield/profile`
+- **IDO / FDE / DualTimeline / ITOT**: `/api/ido/*`、`/api/fde/*`、`/api/dual-timeline/*`、`/api/itot/*`
+- **公理体系**: `/api/ksnap/manifest`、`/api/extend-hypergraph/*`、`/api/dual-chain/*`
+- **评估框架**: `/api/arc-agi3/fetch-real`、`/api/arc-agi3/list-games`、`/api/subsystem-status`
+
+Dashboard 前端面板从模拟数据切换为真实 API 接入，包括 TProcessorPanel、TShieldPanel、AuditMonitor 等组件。
+
+### J.2 OwnThink 断点续传导入
+
+OwnThink 知识库（~140M 三元组）采用断点续传策略导入 SQLite 数据库：
+
+- **导入器**：`resume_import.py` — 原生 sqlite3 + WAL 模式 + busy_timeout=30s + 自动重试
+- **进度**：当前 86M+ 行已导入，~4126 行/秒，预计剩余 ~2.5 小时
+- **去重**：INSERT OR IGNORE + uq_triple_spo 唯一约束
+- **后计算**：`compute_i_weight.py` — 导入完成后批量计算 κ-Gate 语义权重（i_weight = 1.0 + ln(1 + subject_freq) / 10.0）
+- **自动化**：`post_import.py` — 导入完成后自动执行 i_weight 计算 → Flask 重启 → API 测试
+
+### J.3 测试体系扩展
+
+测试套件从 649 个测试扩展至 729 个测试函数（727 passed + 2 skipped），新增测试模块：
+- `test_new_modules.py`（21 测试）— G_ego、Epiplexity、EMLSemZip
+- `test_tomas_v2_articles.py`（51 测试）— κ-Snap、ExtendHypergraph、NAU 刘机制、双链共识、EML-Hardware Co-Design
+- `test_tprocessor_tshield.py`（39 测试）— T-Processor + T-Shield 联合测试
+
+---
+
 ## 参考文献 (References)
 
 [1] 章锋, 李宗海. "太乙互搏 AGI——基于互搏架构的非结合通用人工智能理论（v2.0）". 2026.
@@ -916,7 +1014,7 @@ TOMAS-AGI v3.4 聚焦于代码质量基础设施与数据层可靠性提升：
 >
 > **项目主页**: TOMAS-AGI v2.0 (V3 混合推理)
 >
-> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 649/649 测试通过
+> **代码仓库**: `tomas_agi/` — 79+ 模块, ~800K 代码, 727/729 测试通过（2 skipped 需 API Key）
 >
 > **许可证**: Apache License 2.0 — 详见项目根目录 [LICENSE](../LICENSE) 文件
 >

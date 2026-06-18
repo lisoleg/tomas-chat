@@ -1,6 +1,6 @@
 # TOMAS-AGI 系统架构设计文档
 
-> 版本：v3.4 | 日期：2026-06-18 | 架构师：高见远（Gao）
+> 版本：v3.5 | 日期：2026-06-19 | 架构师：高见远（Gao）
 
 ---
 
@@ -59,138 +59,160 @@ tomas_agi/
 ├── docs/
 │   ├── PRD.md                          # 产品需求文档
 │   ├── ARCHITECTURE.md                 # 本文档
-│   ├── paper.md                        # 学术论文（含 MemOS 融合层）
+│   ├── paper.md                        # 学术论文（v2.5，含 MemOS 融合层 + 公理体系v2 + 评估框架）
 │   ├── paper_memos_fusion.md           # MemOS 融合层技术文档
 │   ├── prd_memos_fusion.md             # MemOS 融合层 PRD
 │   ├── prd_memos_contradiction_v1.1.md # 矛盾检测增强 PRD
 │   ├── architecture_memos_contradiction_v1.1.md # 矛盾检测架构设计
+│   ├── tshield_zynq_arch.md            # T-Shield Zynq-7000 架构设计
+│   ├── tomas_dashboard_arch.md         # Dashboard 架构设计
 │   └── USER_GUIDE.md                   # 用户使用手册
 ├── include/
 │   └── tomas/
 │       ├── common.h                    # 公共宏、类型定义
 │       ├── octonion.h                  # 八元数接口
-│       ├── spectral_graph.h             # 谱图数据结构
+│       ├── spectral_graph.h            # 谱图数据结构
 │       ├── eml_map.h                   # EML内存映射接口
 │       ├── phi_gate.h                  # Φ-Gate接口
 │       ├── kappa_reg.h                 # κ-调节器接口
 │       ├── ci_gate.h                   # CI Gate接口
 │       ├── st_auditor.h                # ST审计器接口
 │       └── constants.h                 # 物理常数（I(X)守恒等）
-├── sim/
+├── sim/                                # Python 仿真与推理引擎 (79 .py 文件)
 │   ├── models.py                       # SQLAlchemy ORM 模型定义（7张表）
-│   ├── server.py                        # Flask REST API 服务器
-│   ├── batch_import.py                  # OwnThink CSV → SQLite 批量导入器
-│   ├── import_ownthink_sqlite.py        # OwnThink 导入器（SQLAlchemy版）
-│   ├── ownthink_importer.py             # OwnThink → EML 格式导入器
-│   ├── token_bridge.py                  # Token Bridge 推理引擎（含κ-Gate + MemOS集成）
+│   ├── server.py                       # Flask REST API 服务器（56 端点）
+│   ├── token_bridge.py                 # Token Bridge 推理引擎（含κ-Gate + MemOS集成）
 │   ├── tomas_sim.py                    # 主仿真器入口
-│   ├── nasga_core.py                   # NASGA核心代数运算（Python）
+│   ├── nasga_core.py                   # NASGA核心代数运算
+│   ├── nasga_octonion.py               # NASGA 八元数运算模块
 │   ├── octonion_py.py                  # 八元数Python实现
 │   ├── spectral_laplacian_py.py        # 谱图Laplacian Python实现
 │   ├── a6_bs_benchmark.py              # A6-BS五级基准测试
 │   ├── xi_c_measure.py                 # ξ_c效能指标测量
-│   ├── llm_distiller.py                 # LLM 知识蒸馏器
+│   ├── fold_depth_py.py                # δ 参数 v2.0（A1 公理 + 域分类）
+│   ├── delta_mem_py.py                 # δ-记忆融合
+│   ├── drift_detector.py               # 知识漂移检测
+│   ├── llm_distiller.py                # LLM 知识蒸馏器
 │   ├── token_generator.py              # 神经解码器（LSTM）
 │   ├── visualizer.py                   # 仿真结果可视化
+│   ├── router.py                       # TOMAS Router 多模型路由器（12 模型池）
+│   ├── eml_injector.py                 # EML 执行上下文注入器 v2.0
+│   ├── model_pool.json                 # 12 家开源模型池配置
+│   ├── batch_import.py                 # OwnThink CSV → SQLite 批量导入器
+│   ├── import_ownthink_sqlite.py       # OwnThink 导入器（SQLAlchemy版）
+│   ├── ownthink_importer.py            # OwnThink → EML 格式导入器
+│   ├── resume_import.py                # OwnThink 断点续传导入器（原生sqlite3/WAL）
+│   ├── compute_i_weight.py             # i_weight 后计算脚本（κ-Gate语义权重）
+│   ├── post_import.py                  # 导入完成后自动化
 │   ├── ─── MemOS 融合层 (V1.1) ───
 │   ├── memos_fusion.py                 # TOMAS-MemOS 核心融合层（五点升维）
 │   ├── memos_integration.py            # Token Bridge 集成包装器
 │   ├── psi_anchor.py                   # ψ-锚数据结构与管理器
 │   ├── contradiction_detector.py       # 三层矛盾检测器（否定词/NLP/EML）
+│   ├── ─── Dead-Zero / MUS 机制 ───
 │   ├── dead_zero_mus.py                # 死零/MUS/κ-Snap 机制
-│   └── ─── 数学降维工具箱 ───
-├── kernel/
+│   ├── quantum_dead_zero.py            # 量子死零检测
+│   ├── spatial_dead_zero.py            # 3D几何物理接地审计
+│   ├── ─── DIKWP 体系 ───
+│   ├── dikwp_mapper.py                 # DIKWP 五层映射器
+│   ├── semantic_math.py                # 语义数学运算
+│   ├── dikwp_ac.py                     # 人工意识（AC）模块
+│   ├── dikwp_eml_bridge.py             # DIKWP↔EML 桥接
+│   ├── agent_audit.py                  # DAAP 审计代理
+│   ├── ─── 桥接模块 ───
+│   ├── causet_bridge.py                # Wolfram超图↔EML桥接（DPO死零守卫）
+│   ├── hyworld_bridge.py               # HY World 2.0↔TOMAS EML桥接
+│   ├── ido_bridge.py                   # IDO五元素模板桥接
+│   ├── fde_builder.py                  # FDE道法术器本体构建器
+│   ├── dual_timeline.py                # 双时间维度引擎
+│   ├── itot_bridge.py                  # IT-OT翻译桥
+│   ├── palantir_mapper.py              # 本体→EML超图映射
+│   ├── ─── 安全审计 ───
+│   ├── semantic_firewall.py            # 语义防火墙（6 ADC高风险模式）
+│   ├── scada_daap.py                   # SCADA环境DAAP审计
+│   ├── hodge_operator.py               # TOMAS-WSC融合算子 L+λΠ
+│   ├── sai_tproc.py                    # T-Processor 后审计层
+│   ├── ├── T-Processor / T-Shield ───
+│   ├── tprocessor_sim.py               # T-Processor v1.0 硬件仿真器
+│   ├── tshield_wrapper.py              # T-Shield 认知安全层
+│   ├── processor_tshield_integration.py # T-Processor + T-Shield 联合推理
+│   ├── tproc_if.py                     # T-Processor 接口
+│   ├── t_shield_anydepth.py            # T-Shield 任意深度版
+│   ├── heuristic_learn.py              # 启发式学习模块
+│   ├── ├── 公理体系 v2 (2026-06-18) ───
+│   ├── g_ego.py                        # G_ego v2.0 双向算子引擎
+│   ├── ksnap_operator.py               # κ-Snap 显影算符 (A2)
+│   ├── extend_hypergraph.py            # ExtendHypergraph 流体智能原语
+│   ├── nau_liu_mechanism.py            # NAU 刘机制（八元数非结合MUS裁决）
+│   ├── dual_chain_consensus.py         # 双链共识动力学
+│   ├── eml_hardware_codesign.py        # EML-Hardware Co-Design
+│   ├── ├── 认知压缩 ───
+│   ├── epiplexity_engine.py            # 认知复杂度引擎
+│   ├── eml_semzip.py                   # EML 5阶段语义压缩
+│   ├── ├── 评估框架 (2026-06-18) ───
+│   ├── arc_agi3_eval.py                # ARC-AGI-3 评估框架
+│   ├── arc_api_client.py               # ARC Prize API 客户端
+│   ├── swe_bench_eval.py               # SWE-bench 评估
+│   ├── gaia_eval.py                    # GAIA 评估
+│   ├── gaia_fetcher.py                 # GAIA 数据集获取脚本
+│   ├── tcci_huashan_test.py            # TCCI-华山测试 v2
+│   ├── ─── 数学降维工具箱 ───
+│   ├── eml_dimred/
+│   │   ├── hyperedge.py                # HypEdge/EMLVertex + EML 加载
+│   │   ├── matroid.py                  # 拟阵贪心剪枝（κ-Gate 最优独立集）
+│   │   ├── gpct.py                     # GPCT 边界层分解（FPT 判定）
+│   │   ├── itc.py                      # ITC 虚时退火（Wick 旋转基态搜索）
+│   │   ├── brown_miklos.py             # Brown-Miklós FPT 度类压缩
+│   │   ├── strf.py                     # STR-F 四大等价变换
+│   │   └── pipeline.py                 # slim_eml 四合一流水线
+│   └── ...
+├── kernel/                             # C 内核模块（~244K 行）
 │   ├── tproc_core.c                    # T-Processor主模块
-│   ├── tproc_core.h                    # 主模块头文件
 │   ├── octonion.c                      # 八元数C实现（Fano查表）
 │   ├── spectral_laplacian.c            # 谱图Laplacian计算
 │   ├── asym_residue.c                  # 结合子残差计算
 │   ├── kappa_reg.c                     # κ=7稳态调节器
 │   ├── eml_map.c                       # EML谱图内存管理
 │   ├── phi_gate.c                      # Φ-Gate语义门控
-│   ├── tomas_entry.S                   # Continuation快照汇编
 │   ├── delta_mem.c                     # δ-mem L1-L2融合
 │   ├── ci_gate.c                       # CI Gate副作用校验
 │   ├── st_auditor.c                    # ST主观倾向审计
 │   ├── port_ctrl.c                     # TXN Port管控
-│   ├── Makefile                        # 内核模块构建
-│   └── Kconfig                         # 内核配置选项
-├── uscsfs/
-│   ├── super.c                         # 超级块操作
-│   ├── inode.c                         # inode操作
-│   ├── file.c                          # 文件读写操作
-│   ├── dir.c                           # 目录操作
-│   ├── symlink.c                       # 符号链接支持
-│   ├── Makefile                        # 文件系统构建
-│   └── Kconfig                         # 文件系统配置
-├── memristor/
-│   ├── mr_array.c                      # 忆阻器阵列驱动
-│   ├── mr_array.h                      # 阵列驱动头文件
-│   ├── mr_calib.c                      # 电导校准
-│   ├── mr_thermal.c                    # 温控防漂移
-│   └── Makefile                        # 驱动构建
-├── cuda/
-│   ├── moufang_kernel.cu               # Moufang-ALU CUDA核
-│   ├── octonion_gpu.cuh                # GPU八元数头文件
-│   ├── spectral_kernel.cu              # 谱图GPU加速
-│   └── Makefile                        # CUDA构建
-├── fpga/
-│   ├── moufang_alu.v                   # Moufang-ALU RTL
-│   ├── i_cell.v                        # I-细胞RTL
-│   ├── eml_graph_ctrl.v                # EML图控制器RTL
-│   ├── kappa_reg.v                     # κ-调节器RTL
-│   ├── tomas_top.v                     # 顶层封装RTL
-│   ├── xi_c_counter.v                  # ξ_c效能计数器RTL
-│   ├── tb_moufang_alu.v                # Moufang-ALU测试平台
-│   ├── tb_tomas_top.v                  # 顶层测试平台
-│   └── constraints.xdc                 # 时序约束（Xilinx）
-├── token_bridge/
-│   ├── server.py                       # FastAPI服务器主入口
-│   ├── api.py                          # REST API路由
-│   ├── symbol_translator.py             # 文本→NASGA符号转换
-│   ├── nasga_compute.py                # 符号计算接口
-│   ├── auth.py                         # Token认证
-│   ├── requirements.txt                 # Python依赖
-│   ├── Dockerfile                      # 容器化配置
-│   └── docker-compose.yml              # 多服务编排
-├── tvde/
-│   ├── compressor.c                    # 视频→EML谱图压缩
-│   ├── compressor.h                    # 压缩器头文件
-│   ├── physics_probe.c                 # 物理残影检测
-│   └── physics_probe.h                 # 探针头文件
-├── formal/
-│   ├── mnq_checker.py                  # MNQ校验器Python封装
-│   ├── mnq_lean.lean                   # MNQ Lean 4形式化证明
-│   ├── cognitive_functor.lean          # 认知函子Lean证明
-│   ├── i_conservation.lean             # I(X)守恒Lean证明
-│   ├── mnq_coq.v                      # MNQ Coq形式化证明
-│   ├── blueprint_gen.rs                # Blueprint DAG生成器
-│   └── proof_scripts/                  # 辅助证明脚本
-│       └── tangent_functor.lean
-├── asic/
-│   ├── spec_28nm.md                    # 28nm流片规格
-│   ├── spec_12nm.md                    # 12nm流片规格
-│   ├── area_est.py                     # 面积估算脚本
-│   ├── power_est.py                    # 功耗估算脚本
-│   └── eda_scripts/
-│       ├── synth.tcl                   # 综合脚本
-│       ├── pnr.tcl                     # 布局布线脚本
-│       └── drc_check.tcl               # DRC检查脚本
-├── tests/
-│   ├── test_octonion.c                # 八元数单元测试
-│   ├── test_spectral.py                # 谱图测试
-│   ├── test_tproc.sh                   # 内核模块集成测试
-│   ├── test_token_bridge.py            # API测试
-│   ├── test_mnq.py                     # MNQ校验测试
-│   ├── test_fpga.py                    # FPGA仿真测试
-│   ├── test_memos.py                   # MemOS 融合层测试（16 cases）
-│   └── test_contradiction.py           # 矛盾检测器测试（11 cases）
+│   └── Makefile                        # 内核模块构建
+├── rtl/                                # Verilog FPGA RTL（~32K 行）
+│   ├── deadzone_comp_array.v           # Dead-Zone 并行比较器阵列
+│   ├── mus_similarity_engine.v         # MUS 流水线相似度引擎 (DSP48E1)
+│   ├── axi_lite_slave.v                # AXI4-Lite 从设备 (12 寄存器)
+│   ├── bram_threshold.v                # BRAM 双端口阈值存储
+│   ├── tshield_pl_top.v                # PL 顶层模块
+│   ├── octonion_mul.v                  # 八元数乘法器
+│   ├── delta_compute.v                 # δ 计算单元
+│   ├── spectral_engine.v               # 谱计算引擎
+│   ├── create_vivado_project.tcl       # Vivado 自动化脚本 (Zynq-7020)
+│   ├── tshield_hal.h/c                 # PS 端 C HAL (UIO/mmap)
+│   └── tb_*.v                          # 测试平台
+├── tests/                              # 测试套件（20 文件，729 测试函数）
+│   ├── test_token_bridge.py            # Token Bridge 测试 (8)
+│   ├── test_eml_dimred.py              # 数学降维测试 (20)
+│   ├── test_router.py                  # 路由器测试 (27)
+│   ├── test_tcci.py                    # TCCI 测试 (15)
+│   ├── test_nasga.py                   # NASGA 测试 (17)
+│   ├── test_memos.py                   # MemOS 测试 (16)
+│   ├── test_contradiction.py           # 矛盾检测测试 (19)
+│   ├── test_causet_wsc.py              # Causet-WSC 测试 (57)
+│   ├── test_hyworld_sai.py             # HY World 测试 (76)
+│   ├── test_ido.py                     # IDO 测试 (105)
+│   ├── test_fde_dual_itot.py           # FDE/DualTimeline/ITOT 测试 (86)
+│   ├── test_tprocessor_tshield.py      # T-Processor+T-Shield 测试 (39)
+│   ├── test_new_modules.py             # G_ego/Epiplexity/SemZip 测试 (21)
+│   ├── test_tomas_v2_articles.py       # κ-Snap/ExtendHypergraph 测试 (51)
+│   ├── test_adc.py                     # ADC 审计测试 (14)
+│   └── ...
 ├── scripts/
 │   ├── build_all.sh                    # 全量构建脚本
 │   ├── run_sim.sh                      # 运行仿真
-│   ├── load_tproc.sh                   # 加载内核模块
-│   ├── unload_tproc.sh                 # 卸载内核模块
 │   ├── audit_view.py                   # 审计日志查看工具
+│   ├── test_endpoints.py              # Flask 端点测试（14 端点）
 │   └── ci_gate_check.sh                # CI Gate手动检查
 ├── Makefile                            # 顶层构建
 ├── README.md                           # 项目说明
@@ -345,6 +367,8 @@ classDiagram
 TOMAS v2.0+ 的数据层已从 JSON 文件迁移到 **SQLite + SQLAlchemy ORM**。
 
 **数据库位置**：`D:/tomas-data/tomas.db`（可通过环境变量 `TOMAS_DB_DIR` 自定义）
+
+**当前规模**：86M+ 行 knowledge_triples（OwnThink 断点续传导入进行中，原始 CSV ~140M 行）
 
 **7 张表结构**（定义于 `sim/models.py`）：
 
@@ -982,4 +1006,4 @@ deepseek-chat/
 
 ---
 
-*文档结束 — 架构师：高见远（Gao）· 更新：2026-06-18*
+*文档结束 — 架构师：高见远（Gao）· 更新：2026-06-19*

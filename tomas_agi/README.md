@@ -5,10 +5,11 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](./LICENSE)
-[![Modules](https://img.shields.io/badge/modules-40-orange.svg)](./kernel/)
-[![Integrity](https://img.shields.io/badge/integrity-42/42%20PASS-brightgreen.svg)]()
+[![Modules](https://img.shields.io/badge/modules-79+-orange.svg)](./sim/)
+[![Tests](https://img.shields.io/badge/tests-727%20PASS-brightgreen.svg)](./tests/)
 [![CUDA](https://img.shields.io/badge/CUDA-supported-success.svg)](./kernel/)
 [![FPGA](https://img.shields.io/badge/FPGA-verified-blueviolet.svg)](./rtl/)
+[![DB](https://img.shields.io/badge/knowledge_triples-86M+-blue.svg)]()
 
 <p align="center">
   <br/>
@@ -73,7 +74,12 @@ graph TD
 - 📐 **NASGA 数学基础** — 八元数（Fano 平面）、非结合谱图 Laplacian、ξ_c 效能指标、δ 信息存在度、Moufang 恒等式约束
 - 🔗 **知识冲突容纳** — 不覆盖矛盾信息，用户逐条决策保留/采纳/合并，实现真正的不一致容忍知识管理
 - 🗂️ **USCS 文件系统** — 自研 δ 加权文件系统，谱页索引 + EML 联动，CRC32 完整性，mmap 直 I/O
-- 📚 **OwnThink 支持** — 大规模中文知识库导入，CSV/三元组格式自动解析蒸馏
+- 📚 **OwnThink 大规模知识库** — 140M+ 三元组断点续传导入，SQLite WAL 模式，κ-Gate 语义剪枝（i_weight 权重），当前 86M+ 行
+- 🧩 **公理体系 v2** — κ-Snap 显影算符、ExtendHypergraph 流体智能原语、NAU 刘机制（八元数非结合 MUS 裁决）、双链共识动力学、EML-Hardware Co-Design
+- ⚙️ **T-Processor + T-Shield** — RRAM Crossbar 硬件仿真器 + 认知安全层（DZ Grafting/MUS Dual-Box/κ-Snap Scheduling），Zynq-7000 RTL 实现
+- 🌐 **G_ego 双向算子** — Afferent/Efferent DMN + NASGA 八元数传播 + T-Shield 监控
+- 📊 **评估框架** — ARC-AGI-3（64×64 网格/RHAE 评分）、SWE-bench Lite（300 实例）、GAIA 数据集获取
+- 🖥️ **Dashboard API** — Flask 56 端点，12 模型路由器，语义防火墙，DIKWP 五层映射，Three.js 3D 世界模型
 
 ---
 
@@ -153,68 +159,89 @@ npm run dev
 
 ```
 tomas-agi/
-├── sim/                          # Python 仿真与推理引擎
+├── sim/                          # Python 仿真与推理引擎 (79 .py 文件)
 │   ├── token_bridge.py           # Token Bridge 推理引擎（翻译官+作家+φ-Gate）
+│   ├── server.py                 # Flask REST API 服务器（56 端点）
+│   ├── models.py                 # SQLAlchemy ORM 模型（7 张表）
 │   ├── llm_distiller.py          # LLM 知识蒸馏器（语料→EML）
 │   ├── token_generator.py        # 神经解码器（模板 + PyTorch LSTM）
 │   ├── nasga_core.py             # NASGA 核心（ξ_c + δ + Moufang）
-│   ├── octonion_py.py            # 八元数代数（Fano 平面 + 自测）
-│   ├── spectral_laplacian_py.py  # 非结合 Laplacian（NetworkX）
-│   ├── xi_c_measure.py           # ξ_c 效能指标
-│   ├── fold_depth_py.py          # δ 参数 v2.0（A1 公理 + 域分类）
-│   ├── delta_mem_py.py           # δ-记忆融合
-│   ├── a6_bs_benchmark.py        # A6-BS 性能基准
-│   ├── drift_detector.py         # 知识漂移检测
-│   ├── tomas_sim.py              # 主仿真器（全模块集成）
-│   ├── ownthink_importer.py      # OwnThink 大知识库导入
-│   ├── extract_pdf_text.py       # PDF 文本提取
-│   └── uscs_fs_test.py           # USCS 文件系统测试
+│   ├── nasga_octonion.py         # NASGA 八元数运算模块
+│   ├── router.py                 # TOMAS Router 多模型路由器（12 模型池）
+│   ├── eml_injector.py           # EML 执行上下文注入器 v2.0
+│   ├── g_ego.py                  # G_ego v2.0 双向算子引擎
+│   ├── ksnap_operator.py         # κ-Snap 显影算符 (A2)
+│   ├── extend_hypergraph.py      # ExtendHypergraph 流体智能原语
+│   ├── nau_liu_mechanism.py      # NAU 刘机制（八元数非结合 MUS 裁决）
+│   ├── dual_chain_consensus.py   # 双链共识动力学
+│   ├── eml_hardware_codesign.py  # EML-Hardware Co-Design
+│   ├── tprocessor_sim.py         # T-Processor v1.0 硬件仿真器
+│   ├── tshield_wrapper.py        # T-Shield 认知安全层
+│   ├── epiplexity_engine.py      # 认知复杂度引擎
+│   ├── eml_semzip.py             # EML 5 阶段语义压缩
+│   ├── dead_zero_mus.py          # 死零/MUS/κ-Snap 机制
+│   ├── memos_fusion.py           # TOMAS-MemOS 融合层
+│   ├── contradiction_detector.py # 三层矛盾检测器
+│   ├── dikwp_mapper.py           # DIKWP 五层映射器
+│   ├── semantic_firewall.py      # 语义防火墙（6 ADC 高风险模式）
+│   ├── ido_bridge.py             # IDO 五元素模板桥接
+│   ├── fde_builder.py            # FDE 道法术器本体构建器
+│   ├── dual_timeline.py          # 双时间维度引擎
+│   ├── itot_bridge.py            # IT-OT 翻译桥
+│   ├── arc_agi3_eval.py          # ARC-AGI-3 评估框架
+│   ├── arc_api_client.py         # ARC Prize API 客户端
+│   ├── swe_bench_eval.py         # SWE-bench 评估
+│   ├── gaia_fetcher.py           # GAIA 数据集获取
+│   ├── resume_import.py          # OwnThink 断点续传导入器
+│   ├── compute_i_weight.py       # i_weight 后计算脚本
+│   ├── post_import.py            # 导入完成后自动化
+│   ├── eml_dimred/               # 数学降维工具箱（7 模块）
+│   │   ├── hyperedge.py          # HypEdge/EMLVertex + EML 加载
+│   │   ├── matroid.py            # 拟阵贪心剪枝（κ-Gate 最优独立集）
+│   │   ├── gpct.py               # GPCT 边界层分解（FPT 判定）
+│   │   ├── itc.py                # ITC 虚时退火（Wick 旋转基态搜索）
+│   │   ├── brown_miklos.py       # Brown-Miklós FPT 度类压缩
+│   │   ├── strf.py               # STR-F 四大等价变换
+│   │   └── pipeline.py           # slim_eml 四合一流水线
+│   └── ... (40+ 其他模块)
 │
 ├── kernel/                       # C 内核模块（~244K 行）
 │   ├── tproc_core.c              # T-Processor 主模块
 │   ├── octonion.c                # 八元数内核库
 │   ├── spectral_laplacian.c      # EML 非结合 Laplacian
-│   ├── asym_residue.c            # 结合子残差 + Moufang(3)
-│   ├── kappa_reg.c               # κ=7 稳态调节器（PID）
-│   ├── eml_map.c                 # EML 谱图内存映射
 │   ├── phi_gate.c                # Φ-Gate 语义门控
-│   ├── delta_mem.c               # δ-mem L1-L2 融合
-│   ├── ci_gate.c                 # CI Gate 因果隔离
-│   ├── st_auditor.c              # ST 倾斜审计
-│   ├── uscsfs/                   # USCS 文件系统
-│   │   ├── super.c               # 超级块（CRC32 + δ 持久化）
-│   │   ├── inode.c               # inode（谱页 + δ 权重）
-│   │   ├── file.c                # Continuation 读写
-│   │   └── mmap.c                # δ 加权页映射
-│   ├── cuda_delta_mem.cu         # CUDA δ-mem 加速
-│   ├── cuda_laplacian.cu         # CUDA Laplacian 加速
-│   ├── cuda_octonion.cu          # CUDA 八元数加速
-│   └── Makefile                  # 编译框架
+│   ├── kappa_reg.c               # κ=7 稳态调节器（PID）
+│   └── ...
 │
 ├── rtl/                          # Verilog FPGA RTL（~32K 行）
+│   ├── deadzone_comp_array.v     # Dead-Zone 并行比较器阵列
+│   ├── mus_similarity_engine.v   # MUS 流水线相似度引擎 (DSP48E1)
+│   ├── axi_lite_slave.v          # AXI4-Lite 从设备
 │   ├── octonion_mul.v            # 八元数乘法器（3 级流水线）
-│   ├── delta_compute.v           # δ 计算单元
 │   ├── spectral_engine.v         # 谱计算引擎
-│   └── Makefile                  # Icarus/Vivado/Yosys 仿真
+│   ├── create_vivado_project.tcl # Vivado 自动化脚本 (Zynq-7020)
+│   └── ...
 │
-├── tools/                        # 用户态工具
-│   ├── integrity_check.py        # 完整性自检（42/42 PASS）
-│   ├── tomas_bench.py            # CPU vs GPU vs FPGA 基准
-│   └── uscsctl.py                # USCS 管理 CLI
+├── tests/                        # 测试套件（20 文件，729 测试函数）
+│   ├── test_token_bridge.py      # Token Bridge 测试 (8)
+│   ├── test_eml_dimred.py        # 数学降维测试 (20)
+│   ├── test_router.py            # 路由器测试 (27)
+│   ├── test_tcci.py              # TCCI 测试 (15)
+│   ├── test_nasga.py             # NASGA 测试 (17)
+│   ├── test_memos.py             # MemOS 测试 (16)
+│   ├── test_contradiction.py     # 矛盾检测测试 (19)
+│   ├── test_causet_wsc.py        # Causet-WSC 测试 (57)
+│   ├── test_hyworld_sai.py       # HY World 测试 (76)
+│   ├── test_ido.py               # IDO 测试 (105)
+│   ├── test_fde_dual_itot.py     # FDE/DualTimeline/ITOT 测试 (86)
+│   ├── test_tprocessor_tshield.py # T-Processor+T-Shield 测试 (39)
+│   ├── test_new_modules.py       # G_ego/Epiplexity/SemZip 测试 (21)
+│   ├── test_tomas_v2_articles.py # κ-Snap/ExtendHypergraph 测试 (51)
+│   └── ...
 │
 ├── data/                         # 语料与蒸馏数据
-│   ├── physics.txt               # 物理学语料
-│   ├── chemistry.txt             # 化学语料
-│   ├── medicine.txt              # 医学语料
-│   ├── quantum_computing.txt     # 量子计算语料
-│   ├── ownthink_sample.csv       # OwnThink 知识库样本
-│   ├── physics_distilled.eml     # 蒸馏后 EML 图谱
-│   └── *.concepts.json           # 概念名称映射
-│
-├── web/                          # Web 仪表板
-│   └── index.html                # 单文件 Dashboard（6 板块）
-│
-├── docs/                         # 文档
+├── docs/                         # 文档（ARCHITECTURE.md, paper.md, PRD.md）
+├── scripts/                      # 工具脚本
 ├── LICENSE                       # Apache 2.0
 └── README.md                     # 本文件
 ```
@@ -243,13 +270,17 @@ tomas-agi/
 
 | 层级 | 模块数 | 验证结果 |
 |------|--------|---------|
-| M1 Python 仿真 | 9 | 9/9 PASS |
-| M2 C 内核 | 10 | 10/10 PASS |
+| M1 Python 仿真核心 | 16 | 16/16 PASS |
+| M2 C 内核 | 14 | 14/14 PASS |
 | M3 USCS 文件系统 | 4 | 5/5 PASS |
 | M4 CUDA 加速 | 3 | 3/3 PASS |
-| M5 推理应用 | 7 | 翻译官(模板+LSTM) + 作家(DeepSeek+φ-Gate) |
-| M6 工具 | 3 | 42/42 完整性 PASS |
-| **总计** | **40** | **全部通过** |
+| M5 推理应用 (Token Bridge) | 12 | 翻译官(模板+LSTM) + 作家(DeepSeek+φ-Gate) + MemOS + DIKWP |
+| M6 T-Processor / T-Shield | 8 | RRAM 仿真 + 认知安全 + Zynq RTL |
+| M7 公理体系 v2 | 5 | κ-Snap / ExtendHypergraph / NAU刘 / 双链共识 / HW Co-Design |
+| M8 评估框架 | 6 | ARC-AGI-3 / SWE-bench / GAIA / TCCI-华山 |
+| M9 数据层 | 5 | SQLite ORM + OwnThink 导入 + i_weight 计算 |
+| M10 桥接模块 | 7 | IDO / FDE / DualTimeline / ITOT / Causet / HYWorld / Palantir |
+| **总计** | **79+** | **727/729 测试通过（2 skipped 需 API Key）** |
 
 ### LLM 对话测试（2026-06-14）
 
