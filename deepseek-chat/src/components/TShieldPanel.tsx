@@ -217,7 +217,32 @@ export default function TShieldPanel() {
         </p>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 md:px-6 pt-2">
+          <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+            <IconShield className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {loading && !stats && (
+        <div className="px-4 md:px-6 pb-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 animate-pulse">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
+                <div className="h-8 bg-chatBg rounded w-12 mx-auto mb-2" />
+                <div className="h-3 bg-chatBg rounded w-10 mx-auto" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
+      {stats && (
       <div className="px-4 md:px-6 pb-3">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
           <div className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
@@ -246,6 +271,7 @@ export default function TShieldPanel() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Tab Bar */}
       <div className="px-4 md:px-6">
@@ -271,6 +297,7 @@ export default function TShieldPanel() {
       </div>
 
       {/* Content */}
+      {(!loading || stats) && (
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3">
         {activeTab === 'overview' && (
           <div className="space-y-4">
@@ -424,6 +451,7 @@ export default function TShieldPanel() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

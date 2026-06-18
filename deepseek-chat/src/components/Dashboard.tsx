@@ -92,7 +92,6 @@ export default function Dashboard() {
                   dikwp: 'distill',
                   firewall: 'firewall-router',
                   router: 'firewall-router',
-                  nasga: 'audit',
                   tprocessor: 'tprocessor',
                   tshield: 'tshield',
                 };

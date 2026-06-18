@@ -4,7 +4,7 @@
 >
 > <sup>1</sup> 复合体理学研究中心（TOMAS 项目组）
 >
-> **版本**: v2.3 (V3.4+ESLint+distillCache+端点测试) | **日期**: 2026-06-18
+> **版本**: v2.4 (V3.4.1+UI打磨+引擎面板设计系统统一) | **日期**: 2026-06-18
 
 ---
 
@@ -849,6 +849,43 @@ TOMAS-AGI v3.4 聚焦于代码质量基础设施与数据层可靠性提升：
 4. **数据集成**：T-Processor/T-Shield 真实 API 接入，淘汰 mock 数据
 5. **缓存优化**：三级缓存降低 API 调用频率，提升响应速度
 
+### G. v3.4.1 UI 打磨与设计系统统一
+
+#### G.1 Loading/Error 状态 UI（P1）
+
+**问题**：TProcessorPanel 和 TShieldPanel 的 `loading`/`error` 状态已定义但未在 JSX 中渲染，API 不可用时用户无感知地看到 mock 数据。
+
+**修复**：
+- TProcessorPanel：新增 pulse 动画骨架屏（4 统计卡片 + 4 模块卡片）+ amber 色 error 横幅
+- TShieldPanel：新增 6 列骨架屏 + error 横幅，summary card 和内容区用条件渲染防止 `stats` 为 null 时崩溃
+- 内容区包裹 `{(!loading || stats) && (...)}` 条件，确保加载中不显示空白内容
+
+#### G.2 引擎面板设计系统统一（P2）
+
+**问题**：IDO、FDE、DualTimeline、ITOT 四个面板使用硬编码 Tailwind 颜色类（`bg-slate-800/60`、`border-slate-700/50`、`text-slate-400` 等），与其他面板的设计系统 tokens（`bg-chatBgAlt`、`border-borderSubtle/30`、`text-textSecondary`）不一致，导致面板切换时视觉跳跃。
+
+**修复**（4 文件，批量 replace_all）：
+| 旧类 | 新类（设计 token） |
+|------|-------------------|
+| `bg-slate-800/60` | `bg-chatBgAlt` |
+| `border-slate-700/50`, `border-slate-700` | `border-borderSubtle/30` |
+| `text-slate-400`, `text-slate-600` | `text-textSecondary` |
+| `text-slate-200`, `text-slate-300` | `text-textPrimary` |
+| `bg-slate-900`, `bg-slate-900/50` | `bg-chatBg`, `bg-chatBg/50` |
+| `focus:border-indigo-500` | `focus:border-accent` |
+
+#### G.3 Dashboard 冗余映射清理 + FDEPanel 类型安全（P3）
+
+- **Dashboard.tsx**：移除 `panelMap` 中已废弃的 `nasga: 'audit'` 映射（对应子系统卡片已删除）
+- **FDEPanel.tsx**：定义 `FDEResult` 接口替代 `useState<any>`，类型为 `{ type: 'build'|'calibrate'|'asym'; [key: string]: unknown }`
+
+#### G.4 质量指标
+
+- TypeScript 编译：0 errors
+- ESLint：0 errors, 170 warnings
+- 修改文件：7 个（TProcessorPanel, TShieldPanel, IDOPanel, FDEPanel, DualTimelinePanel, ITOTPanel, Dashboard）
+- 设计 token 替换：4 个引擎面板，每面板 6-8 个类映射
+
 ---
 
 ## 参考文献 (References)
@@ -879,7 +916,7 @@ TOMAS-AGI v3.4 聚焦于代码质量基础设施与数据层可靠性提升：
 >
 > **项目主页**: TOMAS-AGI v2.0 (V3 混合推理)
 >
-> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 633/633 测试通过
+> **代码仓库**: `tomas_agi/` — 50+ 模块, ~800K 代码, 649/649 测试通过
 >
 > **许可证**: Apache License 2.0 — 详见项目根目录 [LICENSE](../LICENSE) 文件
 >

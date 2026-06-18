@@ -244,7 +244,45 @@ export default function TProcessorPanel() {
         </div>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 md:px-6 pt-2">
+          <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+            <IconShield className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {loading && !stats && (
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3">
+          <div className="space-y-4 animate-pulse">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
+                  <div className="h-8 bg-chatBg rounded w-16 mx-auto mb-2" />
+                  <div className="h-3 bg-chatBg rounded w-10 mx-auto" />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="bg-chatBgAlt rounded-lg border border-borderSubtle/30 p-3 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-chatBg" />
+                  <div className="flex-1">
+                    <div className="h-3 bg-chatBg rounded w-24 mb-1" />
+                    <div className="h-2 bg-chatBg rounded w-32" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
+      {(!loading || stats) && (
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3">
         {activeTab === 'overview' && (
           <div className="space-y-4">
@@ -362,6 +400,7 @@ export default function TProcessorPanel() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

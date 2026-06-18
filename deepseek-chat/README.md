@@ -183,6 +183,23 @@ python token_bridge.py \
 - ✅ 源码 bug 修复：sessionStore dikwDistribution 字段名一致性、retryFetch 不重试逻辑
 - ✅ DIKWPPieChart hooks 顺序修复、AuditMonitor 引号转义修复
 
+### v3.4.1（最新）
+- ✅ **UI 审查修复** — 全面打磨用户界面一致性
+  - TProcessorPanel / TShieldPanel 添加 loading skeleton 和 error 横幅提示
+  - IDO/FDE/DualTimeline/ITOT 4 引擎面板统一为设计系统颜色 tokens
+  - Dashboard 清理冗余 nasga 映射
+  - FDEPanel 移除 `any` 类型，使用具体接口
+- ✅ TypeScript 零错误，ESLint 零 error
+
+### v3.4
+- ✅ ESLint + Prettier 代码质量配置（零 error，170 warnings）
+- ✅ distillCache 三级缓存（localStorage → API → fallback）
+- ✅ T-Processor / T-Shield 面板真实 API 数据接入
+- ✅ Flask 14 端点测试脚本（test_endpoints.py）
+- ✅ distillCache 单元测试 16/16 通过（Vitest）
+- ✅ Flask 服务器开机自启脚本（Windows .bat + Linux systemd）
+- ✅ 3 个源码 Bug 修复（dikwDistribution 字段名、retryFetch 400/401/403 逻辑、空块语句）
+
 ### v3.3
 - ✅ 对话意图检测：避免无意义 EML 检索
 - ✅ JSX Unicode 语法修复（Babel 解析器兼容）

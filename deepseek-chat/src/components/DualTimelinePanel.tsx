@@ -56,69 +56,69 @@ export default function DualTimelinePanel() {
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      <h2 className="text-xl font-bold text-white mb-4">双时间维度引擎</h2>
+      <h2 className="text-xl font-bold text-textPrimary mb-4">双时间维度引擎</h2>
 
       <div className="grid grid-cols-2 gap-4">
         {/* External Timeline */}
-        <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-3">
+        <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-3">
           <h3 className="text-sm font-semibold text-blue-400 flex items-center gap-2">
             <IconLayers className="w-4 h-4" /> 外时间 (因果流)
           </h3>
           <div className="flex gap-2">
             <input value={evtName} onChange={e => setEvtName(e.target.value)}
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500" />
+              className="flex-1 bg-chatBg border border-borderSubtle/30 rounded-lg px-3 py-1.5 text-xs text-textPrimary focus:outline-none focus:border-blue-500" />
             <button onClick={doTick}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs text-white font-medium transition-all">
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs text-textPrimary font-medium transition-all">
               Tick
             </button>
           </div>
-          <div className="h-48 overflow-y-auto space-y-1 bg-slate-900/50 rounded-lg p-2">
+          <div className="h-48 overflow-y-auto space-y-1 bg-chatBg/50 rounded-lg p-2">
             {extEvents.map((e, i) => (
               <div key={i} className="flex justify-between text-xs">
                 <span className="text-blue-300 font-mono">t={e.t}</span>
-                <span className="text-slate-400">{e.event}</span>
+                <span className="text-textSecondary">{e.event}</span>
               </div>
             ))}
-            {extEvents.length === 0 && <div className="text-xs text-slate-600 text-center py-8">等待 Tick...</div>}
+            {extEvents.length === 0 && <div className="text-xs text-textSecondary text-center py-8">等待 Tick...</div>}
           </div>
         </div>
 
         {/* Internal Timeline */}
-        <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-3">
+        <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-3">
           <h3 className="text-sm font-semibold text-violet-400 flex items-center gap-2">
             <IconBrain className="w-4 h-4" /> 内时间 (认知流)
           </h3>
           <div className="flex gap-2">
             <input value={cogName} onChange={e => setCogName(e.target.value)}
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500" />
+              className="flex-1 bg-chatBg border border-borderSubtle/30 rounded-lg px-3 py-1.5 text-xs text-textPrimary focus:outline-none focus:border-violet-500" />
             <button onClick={doStep}
-              className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 rounded-lg text-xs text-white font-medium transition-all">
+              className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 rounded-lg text-xs text-textPrimary font-medium transition-all">
               Step
             </button>
           </div>
-          <div className="h-48 overflow-y-auto space-y-1 bg-slate-900/50 rounded-lg p-2">
+          <div className="h-48 overflow-y-auto space-y-1 bg-chatBg/50 rounded-lg p-2">
             {intEvents.map((e, i) => (
               <div key={i} className="flex justify-between text-xs">
                 <span className="text-violet-300 font-mono">τ={e.tau}</span>
-                <span className="text-slate-400">{e.event}</span>
+                <span className="text-textSecondary">{e.event}</span>
                 <span className="text-amber-400">{e.attention.toFixed(2)}</span>
               </div>
             ))}
-            {intEvents.length === 0 && <div className="text-xs text-slate-600 text-center py-8">等待 Step...</div>}
+            {intEvents.length === 0 && <div className="text-xs text-textSecondary text-center py-8">等待 Step...</div>}
           </div>
         </div>
       </div>
 
       {/* Align */}
-      <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-3">
+      <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-3">
         <button onClick={doAlign} disabled={loading}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-sm text-white font-medium transition-all">
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-sm text-textPrimary font-medium transition-all">
           {loading ? '对齐中...' : '对齐双时间线'}
         </button>
         {alignResult && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-400">对齐状态</span>
+              <span className="text-textSecondary">对齐状态</span>
               <span className={alignResult.aligned ? 'text-emerald-400' : 'text-amber-400'}>
                 {alignResult.aligned ? '已对齐' : '未对齐'}
               </span>

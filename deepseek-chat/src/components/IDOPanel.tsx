@@ -54,7 +54,7 @@ export default function IDOPanel() {
       WARN_UNGROUNDED: 'bg-orange-500/20 text-orange-400',
       NEEDS_HUMAN: 'bg-blue-500/20 text-blue-400',
     };
-    return map[status] || 'bg-slate-500/20 text-slate-400';
+    return map[status] || 'bg-slate-500/20 text-textSecondary';
   };
 
   return (
@@ -62,17 +62,17 @@ export default function IDOPanel() {
       <h2 className="text-xl font-bold text-white mb-4">IDO 信息最优化桥接</h2>
 
       {/* Input card */}
-      <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-4">
+      <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">问题名称</label>
+            <label className="block text-xs text-textSecondary mb-1">问题名称</label>
             <input value={problem} onChange={e => setProblem(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+              className="w-full bg-chatBg border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent" />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">领域</label>
+            <label className="block text-xs text-textSecondary mb-1">领域</label>
             <select value={domain} onChange={e => setDomain(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+              className="w-full bg-chatBg border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent">
               <option value="mathematics">Mathematics</option>
               <option value="physics">Physics</option>
               <option value="computer-science">Computer Science</option>
@@ -82,20 +82,20 @@ export default function IDOPanel() {
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-2">公理状态 (A1-A4)</label>
+          <label className="block text-xs text-textSecondary mb-2">公理状态 (A1-A4)</label>
           <div className="flex gap-3">
             {['A1', 'A2', 'A3', 'A4'].map(a => (
               <label key={a} className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={axioms[a as keyof typeof axioms]} onChange={() => toggleAxiom(a)}
                   className="w-3.5 h-3.5 accent-indigo-500" />
-                <span className="text-xs text-slate-300">{a}</span>
+                <span className="text-xs text-textPrimary">{a}</span>
               </label>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">ℐ 支持度: {iSupport.toFixed(2)}</label>
+          <label className="block text-xs text-textSecondary mb-1">ℐ 支持度: {iSupport.toFixed(2)}</label>
           <input type="range" min="0" max="1" step="0.01" value={iSupport}
             onChange={e => setISupport(Number(e.target.value))}
             className="w-full accent-indigo-500" />
@@ -119,37 +119,37 @@ export default function IDOPanel() {
       {(evalResult || flowResult) && (
         <div className="grid grid-cols-2 gap-4">
           {evalResult && (
-            <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-3">
+            <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-3">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                 <IconLayers className="w-4 h-4 text-indigo-400" /> 评估结果
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">领域</span><span className="text-white">{evalResult.domain}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">分级</span><span className="text-indigo-400 font-mono">{evalResult.tier}</span></div>
+                <div className="flex justify-between"><span className="text-textSecondary">领域</span><span className="text-white">{evalResult.domain}</span></div>
+                <div className="flex justify-between"><span className="text-textSecondary">分级</span><span className="text-indigo-400 font-mono">{evalResult.tier}</span></div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">审计</span>
+                  <span className="text-textSecondary">审计</span>
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${auditBadge(evalResult.audit)}`}>{evalResult.audit}</span>
                 </div>
-                <div className="flex justify-between"><span className="text-slate-400">ℐ 值</span><span className="text-emerald-400 font-mono">{evalResult.i_value.toFixed(4)}</span></div>
+                <div className="flex justify-between"><span className="text-textSecondary">ℐ 值</span><span className="text-emerald-400 font-mono">{evalResult.i_value.toFixed(4)}</span></div>
               </div>
               {evalResult.evidence.length > 0 && (
-                <div className="mt-2 pt-3 border-t border-slate-700/50">
-                  <span className="text-xs text-slate-400">证据链</span>
-                  <ul className="mt-1 space-y-1">{evalResult.evidence.map((e, i) => <li key={i} className="text-xs text-slate-300">• {e}</li>)}</ul>
+                <div className="mt-2 pt-3 border-t border-borderSubtle/30">
+                  <span className="text-xs text-textSecondary">证据链</span>
+                  <ul className="mt-1 space-y-1">{evalResult.evidence.map((e, i) => <li key={i} className="text-xs text-textPrimary">• {e}</li>)}</ul>
                 </div>
               )}
             </div>
           )}
           {flowResult && (
-            <div className="bg-slate-800/60 rounded-xl p-5 border border-slate-700/50 space-y-3">
+            <div className="bg-chatBgAlt rounded-xl p-5 border border-borderSubtle/30 space-y-3">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                 <IconFlame className="w-4 h-4 text-violet-400" /> IDO 流状态
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">步数</span><span className="text-white font-mono">{flowResult.steps}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">最终 ℐ</span><span className="text-emerald-400 font-mono">{flowResult.final_i.toFixed(4)}</span></div>
+                <div className="flex justify-between"><span className="text-textSecondary">步数</span><span className="text-white font-mono">{flowResult.steps}</span></div>
+                <div className="flex justify-between"><span className="text-textSecondary">最终 ℐ</span><span className="text-emerald-400 font-mono">{flowResult.final_i.toFixed(4)}</span></div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">收敛</span>
+                  <span className="text-textSecondary">收敛</span>
                   <span className={flowResult.converged ? 'text-emerald-400' : 'text-amber-400'}>
                     {flowResult.converged ? 'YES' : 'NO'}
                   </span>
