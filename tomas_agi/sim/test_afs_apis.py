@@ -54,15 +54,19 @@ def test_eml_lite_kb_unit():
     print(f"  [T1a] append_only (history len=2): {'PASS' if len(history) == 2 else 'FAIL'}")
 
     # Theorem 1(b): USCS Page Table hash bucket
-    n_bucket = kb.get_stats()["n_buckets"]
-    buckets = set()
+    # n_buckets 默认 1024，100 条边最多覆盖 ~10% bucket
+    stats_before = kb.get_stats()
+    n_bucket = stats_before["n_buckets"]
+    buckets_before = stats_before["buckets"]
     for i in range(100):
-        eid = kb.put_edge(f"s{i}", "p", [f"o{i}"], 0.9, "test")
-        h = abs(hash(eid)) % n_bucket
-        buckets.add(h)
-    coverage = len(buckets) / n_bucket
-    results["T1b_bucket_coverage"] = coverage > 0.3
-    print(f"  [T1b] bucket_coverage: {coverage:.2%} ({len(buckets)}/{n_bucket} buckets)")
+        kb.put_edge(f"s{i}", "p", [f"o{i}"], 0.9, "test")
+    stats_after = kb.get_stats()
+    buckets_after = stats_after["buckets"]
+    new_buckets = buckets_after - buckets_before
+    coverage = new_buckets / n_bucket if n_bucket > 0 else 0
+    # 100 条边 / 1024 bucket → 期望至少 5% 覆盖率（生日悖论期望 ~9%）
+    results["T1b_bucket_coverage"] = coverage > 0.05
+    print(f"  [T1b] bucket_coverage: {coverage:.2%} ({new_buckets}/{n_bucket} buckets)")
 
     # Theorem 1(c): checkpoint / restore
     kid = kb.checkpoint({"session_id": "test_session_001", "pending_edges": []})
@@ -77,16 +81,16 @@ def test_eml_lite_kb_unit():
         [0.1, 0.2, 0.3, 0.4],  # ψ_current
         [0.12, 0.21, 0.31, 0.41],  # e_new (相似)
     ]
-    r1 = phi.filter(embeddings_good[0], embeddings_good[1], e_new_payload={}, session_working=[])
+    r1_outcome, r1_meta = phi.filter(embeddings_good[0], embeddings_good[1], e_new_payload={}, session_working=[])
     # 语义不一致的嵌入 → REJECT
     embeddings_bad = [
         [0.1, 0.2, 0.3, 0.4],
         [-0.5, -0.6, -0.7, -0.8],  # 不相似
     ]
-    r2 = phi.filter(embeddings_bad[0], embeddings_bad[1], e_new_payload={}, session_working=[])
-    results["T2_phi_gate_pass"] = r1 in ["PASS", "MUS_ACTIVE", "TENTATIVE"]
-    results["T2_phi_gate_reject"] = r2 == "REJECT"
-    print(f"  [T2] phi_gate(good)={r1}, phi_gate(bad)={r2}")
+    r2_outcome, r2_meta = phi.filter(embeddings_bad[0], embeddings_bad[1], e_new_payload={}, session_working=[])
+    results["T2_phi_gate_pass"] = r1_outcome in ["PASS", "MUS_ACTIVE", "TENTATIVE"]
+    results["T2_phi_gate_reject"] = r2_outcome == "REJECT"
+    print(f"  [T2] phi_gate(good)={r1_outcome} (φ={r1_meta.get('phi', '?'):.4f}), phi_gate(bad)={r2_outcome} (φ={r2_meta.get('phi', '?'):.4f})")
 
     # Theorem 3(a): MUS 双存
     e_a = {"subject": "x", "confidence": 0.9}
@@ -106,20 +110,20 @@ def test_eml_lite_kb_unit():
 
     # Theorem 3(b): ψ-ACL
     psi_acl = PsiACL()
-    allowed = psi_acl.check_access(
+    allowed, allow_reason = psi_acl.check_access(
         requester_psi_anchor="care_professional",
         data_tag="PHI_medical_record",
         access_type="read"
     )
-    denied = psi_acl.check_access(
+    denied, deny_reason = psi_acl.check_access(
         requester_psi_anchor="unauthorized",
         data_tag="PHI_medical_record",
         access_type="read"
     )
     results["T3b_psi_acl_allow"] = allowed is True
     results["T3b_psi_acl_deny"] = denied is False
-    print(f"  [T3b] psi_acl(care_professional=True): {allowed}")
-    print(f"  [T3b] psi_acl(care_professional=False): {denied}")
+    print(f"  [T3b] psi_acl(care_professional): allowed={allowed} ({allow_reason})")
+    print(f"  [T3b] psi_acl(unauthorized): allowed={denied} ({deny_reason})")
 
     # 汇总
     passed = sum(1 for v in results.values() if v is True)
@@ -213,26 +217,45 @@ def test_aegis_phi_gate_integration():
     print("=" * 60)
 
     try:
-        engine = AEGISEngine(enable_phi_gate=True, enable_psi_acl=True)
+        # 创建 EML_Lite_KB 实例（用于存放 H_harness）
+        from eml_lite_kb import EML_Lite_KB
+        from harness_aegis import TOMAS_HarnessEdge, HookPhase, check_psi_acl as _check_psi_acl_fn
+        eml_kb = EML_Lite_KB()
+        
+        engine = AEGISEngine(eml_kb, enable_phi_gate=True, enable_psi_acl=True)
         print(f"  ✅ AEGISEngine init (phi_gate={engine.enable_phi_gate}, psi_acl={engine.enable_psi_acl})")
 
+        # 构造一个测试用 TOMAS_HarnessEdge 作为 candidate
+        candidate = TOMAS_HarnessEdge(
+            edge_id="test-harness-001",
+            phase=HookPhase.TASK_START,
+            opt_dims=["D1", "D3"],
+            g_ego_psi_alignment="care_safety",
+            prompt_ref="You are a helpful assistant focused on safety.",
+            tool_bindings=[{"tool": "search", "spec": {}}],
+            memory_policy={"mode": "session"},
+            ctrl_flow={"type": "linear"},
+            eval_spec={"metric": "pass_rate"},
+            iota_proxy=0.85,
+            std_ref="HarnessX_v1/test",
+        )
+
         # 模拟一个 trajectory，测试 critic_gate 中的 Φ-Gate 前置检查
-        # 注意：当前是模拟模式（无真实 embedding），Φ-Gate 会跳过
         trajectory = [
             {"step": 1, "action": "read", "result": "ok"},
             {"step": 2, "action": "write", "result": "ok"},
         ]
-        accept, reason = engine.critic_gate(trajectory)
+        accept, reason = engine.critic_gate(candidate, trajectory)
         print(f"  ✅ critic_gate() 返回: accept={accept}, reason={reason}")
         print(f"  ℹ️  （模拟模式：Φ-Gate 因无 embedding 而跳过，见 'phi_gate=skip'）")
 
-        # 测试 check_psi_acl 快捷方法
-        allowed = engine.check_psi_acl(
-            data_tag={"subject": "test", "care_professional": True},
-            psi_anchor={"care_professional": True},
-            op="read"
+        # 测试 check_psi_acl 模块级快捷函数
+        allowed, acl_reason = _check_psi_acl_fn(
+            requester_psi_anchor="care_professional",
+            data_tag="PHI_medical_record",
+            access_type="read"
         )
-        print(f"  ✅ check_psi_acl(): {allowed}")
+        print(f"  ✅ check_psi_acl(): allowed={allowed} ({acl_reason})")
 
         return True
     except Exception as e:

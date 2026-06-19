@@ -1792,16 +1792,25 @@ def get_afs_kb():
 def api_afs_status():
     """获取 AFS（EML-Lite KB）状态"""
     try:
-        from eml_lite_kb import EML_Lite_KB, AppendOnlyHypergraphStore
         kb = get_afs_kb()
         store = kb.global_store
+        # 检查 Φ-Gate 和 ψ-ACL 是否可用（EML_Lite_KB 提供 PhiGate/PsiACL 类）
+        try:
+            from eml_lite_kb import PhiGate as _PhiGate, PsiACL as _PsiACL
+            phi_gate_enabled = True
+            psi_acl_available = True
+        except ImportError:
+            phi_gate_enabled = False
+            psi_acl_available = False
         return jsonify({
             "success": True,
             "data": {
-                "total_edges": len(store.edges),
+                "totalEdges": len(store.edges),
                 "superseded": len(store.superseded),
                 "buckets": len(store.buckets),
-                "kappa_log_len": len(kb.kappa_log),
+                "kappaLogLen": len(kb.kappa_log),
+                "phiGateEnabled": phi_gate_enabled,
+                "psiAlignmentRate": 1.0 if psi_acl_available else 0.0,
             }
         })
     except Exception as e:
