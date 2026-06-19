@@ -39,6 +39,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# 尝试导入 eml_lite_kb 的 Φ-Gate 和 ψ-ACL（文章 Theorem 2 & 3b）
+try:
+    from eml_lite_kb import PhiGate as EMLPhiGate
+    from eml_lite_kb import PsiACL as EMLPsiACL
+    _HAVE_PHI_GATE = True
+except Exception:
+    _HAVE_PHI_GATE = False
+    EMLPhiGate = None
+    EMLPsiACL = None
+
 
 # ====================================================================
 # 枚举
@@ -366,6 +376,12 @@ class AEGISEngine:
         self.g_ego_psi = g_ego_psi_anchor
         self.causal_log = CausalLog()
         self.session_id = str(uuid.uuid4())
+        # Φ-Gate（Theorem 2）— 在 T_Shield 之前运行
+        self.phi_gate = None
+        self.psi_acl = None
+        if _HAVE_PHI_GATE:
+            self.phi_gate = EMLPhiGate(theta_static=0.3)
+            self.psi_acl = EMLPsiACL()
 
     def _compute_trace_hash(self, trajectory: List[Dict[str, Any]]) -> str:
         """计算轨迹的 SHA-256 哈希"""
@@ -457,6 +473,20 @@ class AEGISEngine:
         Returns:
             (accept, reason)
         """
+        # 0. Φ-Gate 前置检查（Theorem 2 — 在 T_Shield 之前运行）
+        if self.phi_gate is not None:
+            import hashlib
+            psi_current = [0.1, 0.2, 0.3, 0.4, 0.5]  # 简化 ψ（真实应从 G_ego 获取）
+            h = hashlib.md5(candidate.prompt_ref.encode("utf-8")).hexdigest()
+            embed_new = [float(int(h[i:i+2], 16)) / 255.0 for i in range(0, 10, 2)]
+            outcome, meta = self.phi_gate.filter(
+                psi_current, embed_new, candidate.to_dict(), []
+            )
+            if outcome == "REJECT":
+                return False, f"Φ-Gate REJECT: {meta.get('reason', '')}"
+            if outcome == "MUS_ACTIVE":
+                logger.warning("Φ-Gate MUS_ACTIVE: %s", meta.get("reason", ""))
+
         # 1. T_Shield std_ref 检查
         if self.t_shield is not None:
             try:
@@ -945,3 +975,64 @@ if __name__ == "__main__":
     # 自测
     result = run_aegis_benchmark()
     print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+# ====================================================================
+# Φ-Gate / ψ-ACL 快捷函数（文章 Theorem 2 & 3b）
+# ====================================================================
+
+def check_phi_gate(
+    psi_current: List[float],
+    embed_new: List[float],
+    e_new_payload: Dict[str, Any],
+    session_working: List[Any],
+    t_dialog: int = 0,
+    theta_static: float = 0.3,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Φ-Gate 快捷函数（Theorem 2）
+
+    Args:
+        psi_current:      当前 ψ 世界模型向量
+        embed_new:       新观测的 embedding
+        e_new_payload:   新超边 payload（用于矛盾检测）
+        session_working:  当前 session 的工作超边列表
+        t_dialog:         对话轮次（用于自适应阈值）
+        theta_static:      静态阈值
+
+    Returns:
+        (outcome, meta)
+        outcome ∈ {"PASS", "MUS_ACTIVE", "TENTATIVE", "REJECT"}
+    """
+    try:
+        from eml_lite_kb import PhiGate as EMLPhiGate
+        gate = EMLPhiGate(theta_static=theta_static)
+        return gate.filter(psi_current, embed_new, e_new_payload, session_working, t_dialog)
+    except Exception as e:
+        logger.warning("check_phi_gate failed: %s", e)
+        return "PASS", {"reason": "phi_gate_unavailable"}
+
+
+def check_psi_acl(
+    requester_psi_anchor: str,
+    data_tag: str,
+    access_type: str = "read",
+) -> Tuple[bool, str]:
+    """
+    ψ-ACL 快捷函数（Theorem 3b）
+
+    Args:
+        requester_psi_anchor: 请求者的 G_ego ψ-anchor
+        data_tag:            数据的 tag
+        access_type:          "read" | "write"
+
+    Returns:
+        (allowed, reason)
+    """
+    try:
+        from eml_lite_kb import PsiACL as EMLPsiACL
+        acl = EMLPsiACL()
+        return acl.check_access(requester_psi_anchor, data_tag, access_type)
+    except Exception as e:
+        logger.warning("check_psi_acl failed: %s", e)
+        return True, "psi_acl_unavailable (allow by default)"

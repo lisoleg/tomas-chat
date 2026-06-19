@@ -1769,6 +1769,217 @@ def api_aegis_harness():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ============================================================
+# AFS — Agent 文件系统 API 端点（v3.5 新增）
+# Theorem 1: AFS + 太极OS USCS ⇔ EML-Lite KB + κ-Snap Continuation
+# ============================================================
+
+@ap.route("/api/afs/status", methods=["GET"])
+def api_afs_status():
+    """获取 AFS（EML-Lite KB）状态"""
+    try:
+        from eml_lite_kb import EML_Lite_KB, AppendOnlyHypergraphStore
+        kb = EML_Lite_KB()
+        store = kb.global_store
+        return jsonify({
+            "success": True,
+            "data": {
+                "total_edges": len(store.edges),
+                "superseded": len(store.superseded),
+                "buckets": len(store.buckets),
+                "kappa_log_len": len(kb.kappa_log),
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/put", methods=["POST"])
+def api_afs_put():
+    """写入 EML 超边（Append-Only，A1 ℐ-守恒）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB, EMLEdge, EdgeType
+        data = request.get_json(silent=True) or {}
+        edge = EMLEdge(
+            edge_id=data.get("edge_id") or f"edge_{uuid.uuid4().hex[:12]}",
+            participants=data.get("participants", []),
+            w=float(data.get("w", 1.0)),
+            iota=float(data.get("iota", 1.0)),
+            edge_type=EdgeType.SEMANTIC,
+            payload=data.get("payload", {}),
+            src_ref=data.get("src_ref", ""),
+            session_tag=data.get("session_tag"),
+            supersedes=data.get("supersedes"),
+            mus_tag=data.get("mus_tag"),
+        )
+        kb = EML_Lite_KB()
+        kb.global_store.append_version(edge)
+        kb.save()
+        return jsonify({
+            "success": True,
+            "data": {"edge_id": edge.edge_id, "action": "appended"}
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/get/<edge_id>", methods=["GET"])
+def api_afs_get(edge_id):
+    """读取 EML 超边"""
+    try:
+        from eml_lite_kb import EML_Lite_KB
+        kb = EML_Lite_KB()
+        e = kb.global_store.get(edge_id)
+        if e is None:
+            return jsonify({"success": False, "error": "edge not found"}), 404
+        return jsonify({"success": True, "data": e.to_dict()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/history/<edge_id>", methods=["GET"])
+def api_afs_history(edge_id):
+    """读取版本历史链（沿 supersedes 反向追溯）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB
+        kb = EML_Lite_KB()
+        history = kb.global_store.get_history(edge_id)
+        return jsonify({
+            "success": True,
+            "data": {
+                "edge_id": edge_id,
+                "history": [e.to_dict() for e in history],
+                "total": len(history),
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/put_mus", methods=["POST"])
+def api_afs_put_mus():
+    """MUS 双存原语（Theorem 3a）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB, EMLEdge
+        data = request.get_json(silent=True) or {}
+        edges_data = data.get("edges", [])
+        tag = data.get("tag", "")
+        if len(edges_data) != 2:
+            return jsonify({"success": False, "error": "MUS requires exactly 2 edges"}), 400
+        edges = [EMLEdge(**d) for d in edges_data]
+        kb = EML_Lite_KB()
+        ok, msg = kb.put_mus(edges, tag)
+        kb.save()
+        return jsonify({"success": ok, "message": msg})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/resolve_mus", methods=["POST"])
+def api_afs_resolve_mus():
+    """G_ego 裁决 MUS（Theorem 3a）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB, MUSResolutionType
+        data = request.get_json(silent=True) or {}
+        tag = data.get("tag", "")
+        resolution = data.get("resolution", "defer")
+        resolved_edge_data = data.get("resolved_edge")
+        kb = EML_Lite_KB()
+        if resolution == "prefer_a":
+            rtype = MUSResolutionType.PREFER_A
+        elif resolution == "prefer_b":
+            rtype = MUSResolutionType.PREFER_B
+        elif resolution == "fuse":
+            rtype = MUSResolutionType.FUSE
+        else:
+            rtype = MUSResolutionType.DEFER
+        resolved_edge = EMLEdge(**resolved_edge_data) if resolved_edge_data else None
+        ok, msg = kb.resolve_mus(tag, rtype, resolved_edge)
+        kb.save()
+        return jsonify({"success": ok, "message": msg})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/checkpoint", methods=["POST"])
+def api_afs_checkpoint():
+    """κ-Snap checkpoint（Corollary 1.1）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB
+        data = request.get_json(silent=True) or {}
+        kb = EML_Lite_KB()
+        kid = kb.checkpoint(data)
+        kb.save()
+        return jsonify({
+            "success": True,
+            "data": {"kid": kid, "message": "checkpoint created"}
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/restore", methods=["POST"])
+def api_afs_restore():
+    """Continuation restore（Corollary 1.4）"""
+    try:
+        from eml_lite_kb import EML_Lite_KB
+        data = request.get_json(silent=True) or {}
+        kid = data.get("kid", "")
+        sess_template = data.get("session_template", {})
+        kb = EML_Lite_KB()
+        restored = kb.restore(kid, sess_template)
+        return jsonify({
+            "success": True,
+            "data": {
+                "restored": bool(restored),
+                "session_id": restored.get("session_id", ""),
+                "psi": restored.get("psi", [])[:5],
+                "working_edges": len(restored.get("H_working", [])),
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/phi_gate", methods=["POST"])
+def api_afs_phi_gate():
+    """Φ-Gate 语义一致性过滤（Theorem 2）"""
+    try:
+        from eml_lite_kb import PhiGate
+        data = request.get_json(silent=True) or {}
+        psi_current = data.get("psi_current", [0.1, 0.2, 0.3])
+        embed_new = data.get("embed_new", [0.1, 0.21, 0.29])
+        e_new_payload = data.get("e_new_payload", {})
+        t_dialog = int(data.get("t_dialog", 0))
+        gate = PhiGate()
+        outcome, meta = gate.filter(psi_current, embed_new, e_new_payload, [], t_dialog)
+        return jsonify({
+            "success": True,
+            "data": {"outcome": outcome, "meta": meta}
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@ap.route("/api/afs/psi_acl", methods=["POST"])
+def api_afs_psi_acl():
+    """G_ego ψ-ACL 检查（Theorem 3b）"""
+    try:
+        from eml_lite_kb import PsiACL
+        data = request.get_json(silent=True) or {}
+        requester_psi = data.get("requester_psi_anchor", "")
+        data_tag = data.get("data_tag", "")
+        access_type = data.get("access_type", "read")
+        acl = PsiACL()
+        ok, reason = acl.check_access(requester_psi, data_tag, access_type)
+        return jsonify({
+            "success": True,
+            "data": {"allowed": ok, "reason": reason}
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     from models import get_engine
     get_engine()
