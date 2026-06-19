@@ -601,6 +601,109 @@ class EML_Lite_KB:
         self._persist_path = persist_path
 
     # ====================================================================
+    # 快捷写入：直接构造 EMLEdge 并 Append-Only 写入
+    # ====================================================================
+
+    def put_edge(
+        self,
+        subject: str,
+        predicate: str,
+        objects: List[str],
+        confidence: float = 1.0,
+        source: str = "",
+        payload: Optional[Dict[str, Any]] = None,
+        supersedes: Optional[str] = None,
+        mus_tag: Optional[str] = None,
+        session_id: str = "",
+    ) -> str:
+        """
+        快捷方法：构造 EMLEdge 并 Append-Only 写入 global_store。
+
+        将 (subject, predicate, objects) 三元组存入 participants + payload。
+        participants = [subject, predicate, *objects]
+        payload["triple"] = {"subject": subject, "predicate": predicate, "objects": objects}
+        payload["confidence"] = confidence
+        payload["source"] = source
+
+        Returns:
+            edge_id (str)
+
+        Theorem 1(a): 若 supersedes 非空，旧边被标记为 superseded（不删除）。
+        """
+        edge = EMLEdge(
+            edge_id=str(uuid.uuid4()),
+            participants=[subject, predicate] + objects,
+            w=confidence,
+            iota=confidence,
+            edge_type=EdgeType.SEMANTIC,
+            payload={
+                "triple": {"subject": subject, "predicate": predicate, "objects": objects},
+                "confidence": confidence,
+                "source": source,
+                **(payload or {}),
+            },
+            src_ref=source,
+            session_tag=session_id or None,
+            supersedes=supersedes,
+            mus_tag=mus_tag,
+        )
+        self.global_store.append_version(edge)
+
+        # 写 SnapEvent（κ-Snap 因果日志）
+        if session_id:
+            snap = SnapEvent(
+                snap_id=str(uuid.uuid4()),
+                session_id=session_id,
+                subject=SnapSubject.EDGE_WRITE,
+                ref_id=edge.edge_id,
+                meta={"iota": edge.iota, "supersedes": supersedes},
+                prev_snap=self.kappa_log[-1].snap_id if self.kappa_log else None,
+                wall_ns=int(time.time_ns()),
+            )
+            self.kappa_log.append(snap)
+
+        logger.info("put_edge: %s (supersedes=%s)", edge.edge_id[:16], supersedes)
+        return edge.edge_id
+
+    # ====================================================================
+    # 便捷查询方法（委托给 global_store）
+    # ====================================================================
+
+    def get(self, edge_id: str) -> Optional[EMLEdge]:
+        """读取边"""
+        return self.global_store.get(edge_id)
+
+    def get_latest(self, base_id: str) -> Optional[EMLEdge]:
+        """读取最新版本"""
+        return self.global_store.get_latest(base_id)
+
+    def get_history(self, edge_id: str) -> List[EMLEdge]:
+        """版本历史链"""
+        return self.global_store.get_history(edge_id)
+
+    def get_by_mus_tag(self, tag: str) -> List[EMLEdge]:
+        """按 MUS tag 查询"""
+        return self.global_store.get_by_mus_tag(tag)
+
+    def get_by_session(self, session_tag: str) -> List[EMLEdge]:
+        """按 session 查询"""
+        return self.global_store.get_by_session(session_tag)
+
+    def get_bucket(self, bucket_id: int) -> List[EMLEdge]:
+        """USCS PageTable：按 bucket 查询"""
+        return self.global_store.get_bucket(bucket_id)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """返回 KB 统计信息"""
+        return {
+            "total_edges": len(self.global_store.edges),
+            "superseded": len(self.global_store.superseded),
+            "buckets": len(self.global_store.buckets),
+            "kappa_log_len": len(self.kappa_log),
+            "n_buckets": self.global_store.n_buckets,
+        }
+
+    # ====================================================================
     # κ-Snap Checkpoint / Restore（Theorem 1c, Corollary 1.1 / 1.4）
     # ====================================================================
 

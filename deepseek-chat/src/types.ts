@@ -95,7 +95,7 @@ export interface ChatState {
   isLoading: boolean
 }
 
-// ===================== AEGIS 演进引擎类型 =====================
+// ===================== AEGIS + AFS 类型 =====================
 
 /** AEGIS 引擎统计 */
 export interface AEGISStats {
@@ -115,6 +115,24 @@ export interface AEGISStats {
   psiAlignmentRate: number;
   /** 四阶段平均延迟（ms） */
   avgStageLatencyMs: Record<string, number>;
+  /** AFS KB 统计（后端 v3.5+） */
+  afs?: AFSStats;
+}
+
+/** AFS (EML-Lite KB) 统计 */
+export interface AFSStats {
+  /** KB 中总边数 */
+  totalEdges: number;
+  /** 被 superseded 的边数（Append-Only，不删除） */
+  superseded: number;
+  /** USCS bucket 数量 */
+  buckets: number;
+  /** κ-Snap 因果日志长度 */
+  kappaLogLen: number;
+  /** USCS PageTable bucket 数量 */
+  nBuckets: number;
+  /** MUS 争端数量 */
+  musDisputes: number;
 }
 
 /** AEGIS MUS 变体簇 */
