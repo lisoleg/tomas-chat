@@ -19,6 +19,9 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TOMAS 模块导入
 try:
@@ -427,6 +430,131 @@ class TShieldWrapper:
             "g_ego_mode_switches": 0,
             "g_ego_anomaly_resets": 0,
         }
+
+    def check_std_ref(
+        self,
+        edge_or_detection: Any,
+        dead_zero_threshold: float = 0.2,
+    ) -> Dict[str, Any]:
+        """
+        std_ref 检查 — Dead-Zero 校验 (Article Theorem 3a)
+
+        检查 EML 超边或检测框的 std_ref 字段：
+        - 如果 std_ref 存在且指向无效标准 → 标记违反
+        - 如果关联的 ℐ 值低于阈值 → 标记 Dead-Zero
+
+        Args:
+            edge_or_detection: EMLHyperedge 或 DetectionBox 或 Dict
+            dead_zero_threshold: Dead-Zero 阈值
+
+        Returns:
+            {
+                "valid": bool,
+                "std_ref": str | None,
+                "reason": str | None,
+            }
+        """
+        result = {
+            "valid": True,
+            "std_ref": None,
+            "reason": None,
+        }
+
+        # 提取 std_ref 和 i_value
+        std_ref = None
+        i_value = None
+
+        if hasattr(edge_or_detection, "std_ref"):
+            # EMLHyperedge
+            std_ref = edge_or_detection.std_ref
+            i_value = getattr(edge_or_detection, "i_value", None)
+        elif isinstance(edge_or_detection, dict):
+            # Dict (检测框或 EML 边字典)
+            std_ref = edge_or_detection.get("std_ref")
+            i_value = edge_or_detection.get("i_value", edge_or_detection.get("confidence"))
+
+        result["std_ref"] = std_ref
+
+        if std_ref is None:
+            return result  # 无 std_ref，跳过检查
+
+        # TODO: 实际实现需要查询标准库验证 std_ref 存在性
+        # 这里简化为：如果 std_ref 非空字符串，认为有效
+        if isinstance(std_ref, str) and len(std_ref) > 0:
+            result["valid"] = True
+            logger.debug("check_std_ref: std_ref=%s valid (simplified)", std_ref)
+        else:
+            result["valid"] = False
+            result["reason"] = f"Invalid std_ref: {std_ref}"
+            self.stats["n_dead_zone"] += 1  # 简化：复用 n_dead_zone 计数
+            logger.warning("check_std_ref: std_ref=%s INVALID", std_ref)
+
+        # Dead-Zero 校验 (如果有关联的 ℐ 值)
+        if i_value is not None and i_value < dead_zero_threshold:
+            result["valid"] = False
+            result["reason"] = f"Dead-Zero: ℐ={i_value:.4f} < θ={dead_zero_threshold}"
+            logger.warning("check_std_ref: Dead-Zero detected for std_ref=%s", std_ref)
+
+        return result
+
+    def validate_psi_alignment(
+        self,
+        edge_or_detection: Any,
+        psi_anchor: Optional[Any] = None,
+        alignment_threshold: float = 0.3,
+    ) -> Dict[str, Any]:
+        """
+        ψ-Alignment 校验 — aligned_with(G_ego_psi_anchor) (Article Theorem 3c)
+
+        检查 EML 超边或检测框是否与 G_ego ψ-anchor 对齐：
+        - 如果对齐度 < threshold → 标记未对齐
+
+        Args:
+            edge_or_detection: EMLHyperedge 或 DetectionBox 或 Dict
+            psi_anchor: G_ego ψ-anchor (如果 None，则使用当前 G_ego 状态)
+            alignment_threshold: 对齐阈值
+
+        Returns:
+            {
+                "aligned": bool,
+                "alignment_score": float | None,
+                "reason": str | None,
+            }
+        """
+        result = {
+            "aligned": True,
+            "alignment_score": None,
+            "reason": None,
+        }
+
+        # 获取 G_ego 当前状态
+        if psi_anchor is None and self.enable_g_ego and self.g_ego_engine is not None:
+            psi_anchor = self.g_ego_engine.get_status()
+
+        if psi_anchor is None:
+            logger.debug("validate_psi_alignment: G_ego not available, skipping")
+            return result
+
+        # 计算对齐度 (简化：使用 ℐ 值差异)
+        edge_i = None
+        if hasattr(edge_or_detection, "i_value"):
+            edge_i = edge_or_detection.i_value
+        elif isinstance(edge_or_detection, dict):
+            edge_i = edge_or_detection.get("i_value", edge_or_detection.get("confidence"))
+
+        if edge_i is not None and isinstance(psi_anchor, dict):
+            g_i = psi_anchor.get("i_value", 0.5)
+            alignment_score = 1.0 - abs(g_i - edge_i)
+            result["alignment_score"] = alignment_score
+
+            if alignment_score < alignment_threshold:
+                result["aligned"] = False
+                result["reason"] = f"Low ψ-alignment: {alignment_score:.4f} < {alignment_threshold}"
+                logger.warning("validate_psi_alignment: low alignment=%.4f", alignment_score)
+            else:
+                logger.debug("validate_psi_alignment: alignment=%.4f (passed)", alignment_score)
+
+        return result
 
     def infer(self, image: np.ndarray, detections: List[Dict]) -> Dict:
         """

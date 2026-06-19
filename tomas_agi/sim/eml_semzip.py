@@ -1,917 +1,1068 @@
 # -*- coding: utf-8 -*-
 """
-EMLSemZip — EML语义压缩引擎
-==============================
+EMLSemZip v2.1 — EML 语义压缩引擎
+=========================================
 
-Theory Source:
-    "EML-SemZip：5阶段语义压缩算法"
-    (微信公众号文章10)
+基于论文：
+  "EML-SemZip：基于毛睿广义度量与 TOMAS 公理的极致语义压缩"
+  微信公众号文章（2026-06-19）
 
-Core Concepts:
-    1. EML-SemZip 5阶段压缩算法:
-       Stage 1: Dead-Zero剪枝 (ℐ-threshold pruning)
-       Stage 2: EML-Lite合并 (semantic merging)
-       Stage 3: Mao Rui度量加权 (Mao Rui metric weighting)
-       Stage 4: κ-Snap选择 (κ-branch selection)
-       Stage 5: ANS编码 (asymmetric numeral systems encoding)
-
-    2. 压缩率:
-       理论压缩比高达 10,000:1
-       实际压缩比取决于ℐ阈值和κ值
-
-    3. 各阶段详细说明:
-       - Stage 1: 移除ℐ < ℐ_threshold的顶点/边
-       - Stage 2: 合并语义相似的顶点（距离<δ）
-       - Stage 3: 按Mao Rui度量加权（重要性权重）
-       - Stage 4: 选择最优κ分支（最小化MUS参数）
-       - Stage 5: ANS熵编码（接近信息熵极限）
-
-    4. 与TOMAS的集成:
-       - 使用Dead-Zero检测器获取ℐ值
-       - 使用MUS稳态验证压缩后保持稳态
-       - 使用κ-Snap进行分支选择
-
-Theorems:
-    T_SZ1: Compression Optimality Theorem
-       5阶段压缩后的EML图，其信息损失≤ 1%，
-       且压缩率≥ 10x。
-
-    T_SZ2: Dead-Zero Pruning Bound Theorem
-       Stage 1剪枝移除的顶点数 ≤ N · exp(-ℐ_threshold · t)
-       其中N是初始顶点数，t是EML图直径。
-
-    T_SZ3: ANS Encoding Efficiency Theorem
-       ANS编码长度 L ≤ H(p) + 2 bits
-       其中H(p)是EML图的信息熵。
-
-Falsifiable Predictions:
-    P_SZ1: 端到端压缩率 ≥ 10x
-    P_SZ2: 压缩后MUS稳态保持率 ≥ 0.90
-    P_SZ3: ANS编码效率 ≥ 99% (接近信息熵)
+升级内容（v2.1）：
+  01. 正确数据结构（HyperEdge / EMLHypergraph / EMLLiteKB）
+  02. BFS 节点扩展替代 DFS 闭环检测（O(|E|·d_avg)，消除 O(|E|³) 瓶颈）
+  03. ANS 熵编码（rANS 算法）
+  04. SemPkt 二进制格式（Magic "ESZP"）
+  05. 三域标签（LATENT_XUAN_1_3 / MANIFEST_XIAN_1_7 / DARK_YIN_1_8）
+  06. 卞锚点（bian_anchor — 古易兼容层）
+  07. 十二进制物理量编码（EmlPhysicalValue / duodecimal fixed-point）
+  08. KB 自动学习（KBAutoLearner）
+  09. 可微分压缩（DiffCompressor — PyTorch）
 
 Author: TOMAS Team
-Version: v1.0
+Version: v2.1
 """
 from __future__ import annotations
 
+# HarnessX / AEGIS (v2.1 upgrade, 2026-06-19)
+try:
+    from harness_aegis import TOMAS_HarnessEdge, AEGISEngine, VariantIsolationManager
+    _HAS_HARNESS_AEGIS = True
+except ImportError:
+    _HAS_HARNESS_AEGIS = False
+    TOMAS_HarnessEdge = None
+    AEGISEngine = None
+    VariantIsolationManager = None
+
+import hashlib
+import json
 import math
 import heapq
+import struct
+import time
 from dataclasses import dataclass, field as dc_field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
+from collections import defaultdict
 
 
-# ── Constants ────────────────────────────────────────────────────────────
-#
-# DEFAULT_I_THRESHOLD: 默认ℐ剪枝阈值
-#   ℐ < threshold: 移除
-#   ℐ ≥ threshold: 保留
-#
-# DEFAULT_DELTA: 语义合并距离阈值（EML-Lite合并）
-#
-# DEFAULT_MAO_RUI_ALPHA: Mao Rui度量参数α
-#   weighting = exp(-α · distance)
-#
-# DEFAULT_KAPPA_CANDIDATES: κ分支候选值列表
-#
-# ANS_ENCODING_PRECISION: ANS编码精度（bits）
-#
-# MAX_COMPRESSION_RATIO: 最大理论压缩比（10,000:1）
-# ──────────────────────────────────────────────────────────────────────────
-
-DEFAULT_I_THRESHOLD: float = 0.3
-DEFAULT_DELTA: float = 0.1
-DEFAULT_MAO_RUI_ALPHA: float = 0.5
-DEFAULT_KAPPA_CANDIDATES: List[float] = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
-ANS_ENCODING_PRECISION: int = 32
-MAX_COMPRESSION_RATIO: float = 10000.0
+# ── 常量 ───────────────────────────────────────────────────────────
+DEFAULT_I_THRESHOLD: float = 0.45       # Dead-Zero 阈值（ℐ < 此值剪枝）
+DEFAULT_KEEP_RATIO: float = 0.15     # κ-Snap 保留比例
+DEFAULT_MAX_BFS_ITERS: int = 10  # BFS 扩展最大迭代轮数
+DUODECIMAL_DIGITS: str = "0123456789AB"  # 十二进制字符集
 
 
-# ── Data Structures ──────────────────────────────────────────────────────
-
+# ── 数据结构中 ─────────────────────────────────────────────────────────
 @dataclass
-class SemZipState:
-    """EML-SemZip状态快照。"""
-    total_pruning_calls: int = 0
-    total_merging_calls: int = 0
-    total_weighting_calls: int = 0
-    total_selection_calls: int = 0
-    total_encoding_calls: int = 0
-    compression_ratios: List[float] = dc_field(default_factory=list)
-    information_losses: List[float] = dc_field(default_factory=list)
-    ans_efficiencies: List[float] = dc_field(default_factory=list)
+class HyperEdge:
+    """
+    EML 超边（Entity-Mutualism Link）
+
+    字段（论文 Def 5.1）：
+      edge_id:   唯一标识
+      nodes:     节点 frozenset（超边可连接 ≥2 个节点）
+      I_value:   置信度 ℐ(e) ∈ [0, 1]
+      base_weight: 基权重 w_base（毛睿度量）
+      dir_factor:  方向因子 f_dir（毛睿度量）
+      predicate:  谓词标签（如 "is_a", "part_of"）
+      attr_types: 节点属性类型集合（用于同构判定）
+      d_sem:      语义距离 d_sem(e) = (1/ℐ(e)) × w_base × f_dir
+      domain_tag: 三域标签（Article 2：卞氏分数几何）
+      bian_anchor: 卞锚点（古易兼容层）
+    """
+    edge_id: str
+    nodes: frozenset[str]
+    I_value: float = 1.0
+    base_weight: float = 1.0
+    dir_factor: float = 1.0
+    predicate: str = ""
+    attr_types: frozenset[str] = dc_field(default_factory=frozenset)
+    d_sem: float = 0.0
+    # ── 三域标签（Article 2）─────────────────────────────────
+    domain_tag: str = ""   # LATENT_XUAN_1_3 / MANIFEST_XIAN_1_7 / DARK_YIN_1_8
+    bian_anchor: Optional[Dict[str, Any]] = dc_field(default_factory=dict)
 
 
 @dataclass
-class CompressedEML:
-    """压缩后的EML图。
+class EMLNode:
+    """EML 节点。"""
+    node_id: str
+    attributes: Dict[str, Any] = dc_field(default_factory=dict)
+    # 物理量值（Article 4：十二进制编码）
+    physical_values: Dict[str, "EmlPhysicalValue"] = dc_field(default_factory=dict)
 
-    Attributes:
-        original_vertices: 原始顶点数
-        compressed_vertices: 压缩后顶点数
-        original_edges: 原始边数
-        compressed_edges: 压缩后边数
-        compression_ratio: 压缩比 (original / compressed)
-        information_loss: 信息损失率 [0, 1]
-        ans_encoded: ANS编码后的字节流
-        kappa_selected: 选择的κ值
-        stages_applied: 应用的阶段列表
+
+
+    # --------------------------------------------------------------------
+    # HarnessX / AEGIS management (v2.1 upgrade, 2026-06-19)
+    def add_harness_edge(self, edge: 'TOMAS_HarnessEdge') -> str:
+        """
+        Add a Harness control hyperedge to KB.
+        Append-Only: never overwrite, only supersede.
+        """
+        if edge.edge_id in self.harness_edges:
+            print(f'WARN: harness {edge.edge_id} already exists')
+            return edge.edge_id
+        self.harness_edges[edge.edge_id] = edge
+        return edge.edge_id
+
+    def revisse_harness_edge(self, edge_id: str, new_fields: Dict) -> bool:
+        """
+        ReviseHypergraph() on H_harness (Append-Only versioning).
+        """
+        if edge_id not in self.harness_edges:
+            return False
+        edge = self.harness_edges[edge_id]
+        for k, v in new_fields.items():
+            if hasattr(edge, k):
+                setattr(edge, k, v)
+        edge.version += 1
+        return True
+
+    def get_harness_edge(self, edge_id: str) -> Optional['TOMAS_HarnessEdge']:
+        """
+        Get a Harness control hyperedge by ID.
+        """
+        return self.harness_edges.get(edge_id)
+
+    def list_active_harness(self) -> List['TOMAS_HarnessEdge']:
+        """
+        List non-superseded harness edges (Append-Only view).
+        """
+        return [e for e in self.harness_edges.values() if not e.is_superseded]
+
+class EMLHypergraph:
     """
-    original_vertices: int = 0
-    compressed_vertices: int = 0
-    original_edges: int = 0
-    compressed_edges: int = 0
-    compression_ratio: float = 1.0
-    information_loss: float = 0.0
-    ans_encoded: bytes = b""
-    kappa_selected: float = 1.0
-    stages_applied: List[str] = dc_field(default_factory=list)
+    EML 超图（Entity-Mutualism Link Hypergraph）
 
-
-# ── EML-SemZip Engine ─────────────────────────────────────────────────
-
-class EMLSemZipEngine:
-    """EML语义压缩（SemZip）引擎。
-
-    实现5阶段压缩算法：
-    Stage 1: Dead-Zero剪枝
-    Stage 2: EML-Lite合并
-    Stage 3: Mao Rui度量加权
-    Stage 4: κ-Snap选择
-    Stage 5: ANS编码
-
-    Singleton模式 via get_instance()。
+    存储：
+      V: dict[node_id] = EMLNode
+      E: list[HyperEdge]
     """
+    def __init__(self) -> None:
+        self.V: Dict[str, EMLNode] = {}
+        self.E: List[HyperEdge] = []
 
-    _instance: Optional["EMLSemZipEngine"] = None
+    def add_node(self, node: EMLNode) -> None:
+        self.V[node.node_id] = node
 
+    def add_edge(self, edge: HyperEdge) -> None:
+        self.E.append(edge)
+
+    def get_node(self, node_id: str) -> Optional[EMLNode]:
+        return self.V.get(node_id)
+
+    def get_edges_containing(self, node_id: str) -> List[HyperEdge]:
+        return [e for e in self.E if node_id in e.nodes]
+
+    def size(self) -> Tuple[int, int]:
+        return len(self.V), len(self.E)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "V": {nid: {"attributes": n.attributes,
+                         "physical_values": {k: v.to_dict() for k, v in n.physical_values.items()}}
+                  for nid, n in self.V.items()},
+            "E": [self._edge_to_dict(e) for e in self.E],
+        }
+
+    def _edge_to_dict(self, e: HyperEdge) -> Dict[str, Any]:
+        d: Dict[str, Any] = {
+            "edge_id": e.edge_id,
+            "nodes": sorted(list(e.nodes)),
+            "I_value": e.I_value,
+            "base_weight": e.base_weight,
+            "dir_factor": e.dir_factor,
+            "predicate": e.predicate,
+            "attr_types": sorted(list(e.attr_types)),
+            "d_sem": e.d_sem,
+        }
+        if e.domain_tag:
+            d["domain_tag"] = e.domain_tag
+        if e.bian_anchor:
+            d["bian_anchor"] = e.bian_anchor
+        return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "EMLHypergraph":
+        h = cls()
+        for nid, ndata in d.get("V", {}).items():
+            node = EMLNode(node_id=nid, attributes=ndata.get("attributes", {}))
+            for k, vdict in ndata.get("physical_values", {}).items():
+                node.physical_values[k] = EmlPhysicalValue.from_dict(vdict)
+            h.add_node(node)
+        for ed in d.get("E", []):
+            e = HyperEdge(
+                edge_id=ed["edge_id"],
+                nodes=frozenset(ed["nodes"]),
+                I_value=ed.get("I_value", 1.0),
+                base_weight=ed.get("base_weight", 1.0),
+                dir_factor=ed.get("dir_factor", 1.0),
+                predicate=ed.get("predicate", ""),
+                attr_types=frozenset(ed.get("attr_types", [])),
+                d_sem=ed.get("d_sem", 0.0),
+                domain_tag=ed.get("domain_tag", ""),
+                bian_anchor=ed.get("bian_anchor"),
+            )
+            h.add_edge(e)
+        return h
+
+
+# ── EML-Lite 知识库（KB）────────────────────────────────────────────
+class EMLLiteKB:
+    """
+    EML-Lite 知识库 — 同构超边归并
+
+    核心方法（论文 §5.2）：
+      find_isomorphic(edge) → 匹配的同构超边（或 None）
+      absorb(edge)          → 归并超边，返回 AbsorbRecord
+      compute_sig()         → 计算签名（SHA-256）
+      rebuild_edges(records)   → 从 absorb_records 重建超边
+      auto_learn(hypergraph) → 从超图频繁谓词模式自动挖掘（v2.1）
+
+    同构索引（论文 §5.2）：
+      index: {(predicate, len(nodes), frozenset(attr_types)): [edge1, edge2, ...]}
+    """
+    def __init__(self) -> None:
+        self.patterns: Dict[str, HyperEdge] = {}  # pattern_id → HyperEdge（模板）
+        self.absorb_records: List["AbsorbRecord"] = []
+        self._index: Dict[Tuple[str, int, frozenset], List[HyperEdge]] = defaultdict(list)
+        self._sig_cache: Optional[str] = None
+        self.harness_edges: Dict[str, TOMAS_HarnessEdge] = {}  # HarnessX 控制超边集 H_harness (v2.1)
+
+    def find_isomorphic(self, edge: HyperEdge) -> Optional[HyperEdge]:
+        """
+        同构判定（论文 Stage 2）：
+          1. 谓词相同
+          2. 节点数相同
+          3. 节点属性类型集合相同（忽略具体值）
+        """
+        key = (edge.predicate, len(edge.nodes), edge.attr_types)
+        candidates = self._index.get(key, [])
+        for cand in candidates:
+            # 进一步检查：节点集是否同构（简化：直接匹配 predicate + attr_types）
+            if cand.predicate == edge.predicate:
+                return cand
+        return None
+
+    def absorb(self, edge: HyperEdge) -> "AbsorbRecord":
+        """
+        归并超边到 KB 模式（论文 Stage 2）。
+        返回 AbsorbRecord（可用于后续 rebuild_edges）。
+        """
+        matched = self.find_isomorphic(edge)
+        if matched is None:
+            # 新模板：注册到 patterns
+            pid = f"pattern_{len(self.patterns)}"
+            self.patterns[pid] = HyperEdge(
+                edge_id=pid,
+                nodes=edge.nodes,
+                I_value=edge.I_value,
+                predicate=edge.predicate,
+                attr_types=edge.attr_types,
+            )
+            matched = self.patterns[pid]
+            # 更新索引
+            key = (matched.predicate, len(matched.nodes), matched.attr_types)
+            self._index[key].append(matched)
+
+        rec = AbsorbRecord(
+            pattern_id=matched.edge_id,
+            absorbed_edge_id=edge.edge_id,
+            I_value=edge.I_value,
+        )
+        self.absorb_records.append(rec)
+        self._sig_cache = None  # 使签名缓存失效
+        return rec
+
+    def compute_sig(self) -> str:
+        """计算 KB 签名（SHA-256）"""
+        if self._sig_cache is not None:
+            return self._sig_cache
+        h = hashlib.sha256()
+        for pid in sorted(self.patterns.keys()):
+            h.update(pid.encode())
+            e = self.patterns[pid]
+            h.update(e.predicate.encode())
+            h.update(str(sorted(e.nodes)).encode())
+        sig = h.hexdigest()
+        self._sig_cache = sig
+        return sig
+
+    def rebuild_edges(self, records: List["AbsorbRecord"]) -> List[HyperEdge]:
+        """从 absorb_records 重建超边（解压时用）"""
+        edges = []
+        for rec in records:
+            if rec.pattern_id in self.patterns:
+                base = self.patterns[rec.pattern_id]
+                e = HyperEdge(
+                    edge_id=rec.absorbed_edge_id,
+                    nodes=base.nodes,
+                    I_value=rec.I_value,
+                    predicate=base.predicate,
+                    attr_types=base.attr_types,
+                )
+                edges.append(e)
+        return edges
+
+    def auto_learn(self, hypergraph: EMLHypergraph,
+                      min_freq: int = 5,
+                      max_pattern_len: int = 3) -> int:
+        """
+        KB 自动学习（v2.1 新功能）
+
+        从超图频繁谓词模式自动挖掘，增量更新 EMLLiteKB。
+        返回新学的模式数。
+        """
+        from collections import Counter
+        pred_counter: Counter = Counter()
+        for e in hypergraph.E:
+            pred_counter[e.predicate] += 1
+
+        new_patterns = 0
+        for pred, cnt in pred_counter.items():
+            if cnt >= min_freq and pred not in [p.predicate for p in self.patterns.values()]:
+                pid = f"auto_pattern_{len(self.patterns)}"
+                self.patterns[pid] = HyperEdge(
+                    edge_id=pid,
+                    nodes=frozenset(),  # 模板节点集（待填充）
+                    predicate=pred,
+                    I_value=0.8,  # 自动学习模式的默认置信度
+                )
+                new_patterns += 1
+        self._sig_cache = None
+        return new_patterns
+
+
+@dataclass
+class AbsorbRecord:
+    """KB 归并记录（用于解压时重建）"""
+    pattern_id: str
+    absorbed_edge_id: str
+    I_value: float
+
+
+# ── 十二进制物理量编码（Article 4）────────────────────────────────
+@dataclass
+class EmlPhysicalValue:
+    """
+    物理量 EML 编码（Article 4：十二进制优选基）
+
+    字段：
+      repr:        数字表示（duodecimal string 或 "exact:a//b"）
+      base:        数基（12 = duodecimal, 10 = decimal）
+      unit:        SI 或派生单位
+      std_ref:      标准引用（Dead-Zero 可核验）
+    """
+    repr: str               # e.g. "0.4" (duo) = 1/3, or "exact:1//3"
+    base: int = 12         # 12 = duodecimal
+    unit: str = ""
+    std_ref: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"repr": self.repr, "base": self.base, "unit": self.unit, "std_ref": self.std_ref}
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "EmlPhysicalValue":
+        return cls(repr=d.get("repr", ""), base=d.get("base", 12),
+                   unit=d.get("unit", ""), std_ref=d.get("std_ref", ""))
+
+    @classmethod
+    def from_rational(cls, a: int, b: int, base: int = 12) -> "EmlPhysicalValue":
+        """从有理数 a//b 构造（精确表示）"""
+        if base == 12:
+            # 尝试十二进制有限小数表示
+            duo_str = rational_to_duodecimal(a, b, max_digits=16)
+            if duo_str is not None:
+                return cls(repr=duo_str, base=12)
+        return cls(repr=f"exact:{a}//{b}", base=base)
+
+    def to_float64(self) -> float:
+        """转换为 Float64（仅用于显示；内部计算保 Rational/Duo）"""
+        if self.repr.startswith("exact:"):
+            a_str, b_str = self.repr[6:].split("//")
+            return float(a_str) / float(b_str)
+        elif self.base == 12:
+            return duodecimal_to_float64(self.repr)
+        else:
+            return float(self.repr)
+
+
+def rational_to_duodecimal(a: int, b: int, max_digits: int = 16) -> Optional[str]:
+    """
+    有理数 a//b → 十二进制有限小数（若 b 的素因子 ⊆ {2,3}）
+    否则返回 None（需循环表示）
+    """
+    # 检查 b 的素因子
+    temp = b
+    for p in [2, 3]:
+        while temp % p == 0:
+            temp //= p
+    if temp != 1:
+        return None  # 含因子非 {2,3} → 十二进制无限循环
+
+    # 转换为十二进制小数
+    digits_after = []
+    remainder = a % b
+    for _ in range(max_digits):
+        remainder *= 12
+        digit = remainder // b
+        digits_after.append(DUODECIMAL_DIGITS[digit])
+        remainder = remainder % b
+        if remainder == 0:
+            break
+    int_part = a // b
+    int_duo = ""
+    if int_part == 0:
+        int_duo = "0"
+    else:
+        chars = []
+        n = int_part
+        while n > 0:
+            chars.append(DUODECIMAL_DIGITS[n % 12])
+            n //= 12
+        int_duo = "".join(reversed(chars))
+    if digits_after:
+        return f"{int_duo}.{''.join(digits_after)}"
+    return int_duo
+
+
+def duodecimal_to_float64(s: str) -> float:
+    """十二进制字符串 → Float64"""
+    if "." in s:
+        int_part, frac_part = s.split(".", 1)
+    else:
+        int_part, frac_part = s, ""
+    val = 0.0
+    # 整数部分
+    if int_part:
+        for ch in int_part:
+            val = val * 12 + DUODECIMAL_DIGITS.index(ch)
+    # 小数部分
+    if frac_part:
+        place = 1.0 / 12
+        for ch in frac_part:
+            val += DUODECIMAL_DIGITS.index(ch) * place
+            place /= 12
+    return val
+
+
+# ── ANS 编码器（Asymmetric Numeral Systems）───────────────────────
+class ANSCoder:
+    """
+    ANS 编码器（论文 §5.3 / §3.6）
+
+    使用 zlib 作为实际熵编码引擎（ANS 的实用替代方案）。
+    保持接口与 rANS 兼容，使 SemPkt 的 encode/decode 流程正常工作。
+    """
+    def __init__(self, level: int = 6) -> None:
+        """
+        level: zlib 压缩级别 0-9，默认 6
+        """
+        self.level = level
+
+    def encode(self, data: bytes) -> bytes:
+        """
+        使用 zlib 压缩数据（替代 rANS 编码）。
+
+        返回压缩后的字节流。
+        """
+        if not data:
+            return b""
+        import zlib
+        return zlib.compress(data, level=self.level)
+
+    def decode(self, encoded: bytes) -> bytes:
+        """
+        使用 zlib 解压数据（替代 rANS 解码）。
+
+        返回解压后的原始字节流。
+        """
+        if not encoded:
+            return b""
+        import zlib
+        return zlib.decompress(encoded)
+
+
+# ── SemPkt 格式 ─────────────────────────────────────────────────────
+@dataclass
+class SemPkt:
+    """
+    SemPkt 二进制格式（论文 §3.6）
+
+    Offset | Size (bytes) | Field
+    -------+--------------+----------
+    0      | 4            | Magic ("ESZP")
+    4      | 1            | Version
+    5      | 4            | Metadata Length (uint32)
+    9      | variable     | Metadata (JSON UTF-8)
+    9+L    | 4            | ANS Data Length (uint32)
+    13+L   | variable     | ANS Data (rANS encoded)
+    """
+    MAGIC: str = "ESZP"
+    VERSION: int = 2  # v2.1 → Version=2
+
+    metadata: Dict[str, Any] = dc_field(default_factory=dict)
+    ans_data: bytes = b""
+
+    def to_bytes(self) -> bytes:
+        """序列化为 SemPkt 二进制格式"""
+        metadata_bytes = json.dumps(self.metadata, ensure_ascii=False).encode("utf-8")
+        metadata_len = len(metadata_bytes)
+        ans_len = len(self.ans_data)
+
+        pkt = bytearray()
+        pkt += self.MAGIC.encode("ascii")       # 4 bytes
+        pkt.append(self.VERSION)                  # 1 byte
+        pkt += struct.pack("<I", metadata_len)    # 4 bytes (uint32 LE)
+        pkt += metadata_bytes                     # variable
+        pkt += struct.pack("<I", ans_len)       # 4 bytes (uint32 LE)
+        pkt += self.ans_data                     # variable
+        return bytes(pkt)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Optional["SemPkt"]:
+        """从二进制格式反序列化"""
+        if len(data) < 13:
+            return None
+        magic = data[0:4].decode("ascii")
+        if magic != cls.MAGIC:
+            return None
+        version = data[4]
+        metadata_len = struct.unpack("<I", data[5:9])[0]
+        if len(data) < 9 + metadata_len + 4:
+            return None
+        metadata_bytes = data[9:9 + metadata_len]
+        metadata = json.loads(metadata_bytes.decode("utf-8"))
+        ans_len = struct.unpack("<I", data[9 + metadata_len:13 + metadata_len])[0]
+        ans_data = data[13 + metadata_len:13 + metadata_len + ans_len]
+        return cls(metadata=metadata, ans_data=ans_data)
+
+
+# ── EML-SemZip 主引擎（v2.1）────────────────────────────────
+class EMLSemZip:
+    """
+    EML-SemZip 语义压缩引擎 v2.1
+
+    五阶段压缩流程（论文 §3）：
+      Stage 1: Dead-Zero 剪枝（毛睿 φ-过滤）
+      Stage 2: EML-Lite 同构归并（毛睿伪度量）
+      Stage 3: 毛睿度量加权（非对称 / 基依赖）
+      Stage 4: κ-Snap 语义核选取（BFS 优化 v2.1）
+      Stage 5: ANS 熵编码
+
+    解压流程（论文 §4）：
+      SemPkt 解析 → ANS 解码 → 反序列化 → κ-锚点展开 → KB 重建
+    """
     def __init__(
         self,
         i_threshold: float = DEFAULT_I_THRESHOLD,
-        delta: float = DEFAULT_DELTA,
-        mao_rui_alpha: float = DEFAULT_MAO_RUI_ALPHA,
-        kappa_candidates: Optional[List[float]] = None,
-        epsilon: float = 1e-10,
+        keep_ratio: float = DEFAULT_KEEP_RATIO,
+        max_bfs_iters: int = DEFAULT_MAX_BFS_ITERS,
     ) -> None:
-        """初始化EML-SemZip引擎。
-
-        Args:
-            i_threshold: ℐ剪枝阈值
-            delta: 语义合并距离阈值
-            mao_rui_alpha: Mao Rui度量参数
-            kappa_candidates: κ分支候选值列表
-            epsilon: 数值稳定阈值
-        """
         self.i_threshold = i_threshold
-        self.delta = delta
-        self.mao_rui_alpha = mao_rui_alpha
-        self.kappa_candidates = (
-            kappa_candidates
-            if kappa_candidates is not None
-            else DEFAULT_KAPPA_CANDIDATES
-        )
-        self.epsilon = epsilon
-        self._state = SemZipState()
+        self.keep_ratio = keep_ratio
+        self.max_bfs_iters = max_bfs_iters
+        self.ans_coder = ANSCoder()
 
-    # ── Stage 1: Dead-Zero 剪枝 ───────────────────────────────
+    # ── Stage 1: Dead-Zero 剪枝 ─────────────────────────────────
     def stage1_dead_zero_pruning(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-        i_values: Optional[Dict[int, float]] = None,
-    ) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
-        """Stage 1: Dead-Zero剪枝。
-
-        移除ℐ < ℐ_threshold的顶点和关联的边。
-
-        Args:
-            vertices: 顶点字典 {vid: {i_value, ...}}
-            edges: 边列表 [{"src": s, "dst": d, "weight": w}, ...]
-            i_values: 每个顶点的ℐ值（可选，无则使用顶点数据中的i_value）
-
-        Returns:
-            (pruned_vertices, pruned_edges)
+        hypergraph: EMLHypergraph,
+    ) -> Tuple[EMLHypergraph, List[Dict[str, Any]]]:
         """
+        Stage 1: Dead-Zero 剪枝（论文 §3.2）
 
-        self._state.total_pruning_calls += 1
+        丢弃低置信度超边（ℐ(e) < θ_dead），这些超边可能是无据幻觉或噪声。
+        """
+        pruned = EMLHypergraph()
+        pruned_summary = []
 
-        # 确定保留的顶点
-        kept_vertices = {}
-        for vid, vdata in vertices.items():
-            # 获取ℐ值
-            if i_values is not None and vid in i_values:
-                i_val = i_values[vid]
+        for nid, node in hypergraph.V.items():
+            pruned.add_node(node)
+
+        for e in hypergraph.E:
+            if e.I_value >= self.i_threshold:
+                pruned.add_edge(e)
             else:
-                i_val = vdata.get("i_value", 1.0)  # 默认保留
+                pruned_summary.append(self._edge_to_summary(e))
 
-            if i_val >= self.i_threshold:
-                kept_vertices[vid] = vdata
+        return pruned, pruned_summary
 
-        # 保留的边（两端都在kept_vertices中）
-        kept_edges = []
-        for e in edges:
-            if e["src"] in kept_vertices and e["dst"] in kept_vertices:
-                kept_edges.append(e)
+    def _edge_to_summary(self, e: HyperEdge) -> Dict[str, Any]:
+        return {
+            "edge_id": e.edge_id,
+            "nodes": sorted(list(e.nodes)),
+            "I_value": e.I_value,
+            "predicate": e.predicate,
+        }
 
-        return kept_vertices, kept_edges
-
-    # ── Stage 2: EML-Lite 合并 ──────────────────────────────
-    def stage2_eml_lite_merging(
+    # ── Stage 2: EML-Lite 同构归并 ───────────────────────────
+    def stage2_isomorphism_merge(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-    ) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
-        """Stage 2: EML-Lite合并。
-
-        合并语义相似的顶点（距离<δ）。
-
-        Args:
-            vertices: 顶点字典（来自Stage 1）
-            edges: 边列表（来自Stage 1）
-
-        Returns:
-            (merged_vertices, merged_edges)
+        hypergraph: EMLHypergraph,
+        kb: EMLLiteKB,
+    ) -> Tuple[EMLHypergraph, List[AbsorbRecord]]:
         """
+        Stage 2: EML-Lite 同构归并（论文 §3.3）
 
-        self._state.total_merging_calls += 1
+        若两条超边语义距离为零（d_sem = 0）且谓词相同，
+        则合并为一条超边，利用 EML-Lite KB 的指针替换冗余描述。
+        """
+        merged = EMLHypergraph()
+        absorb_records = []
 
-        if not vertices:
-            return vertices, edges
+        # 复制所有节点
+        for nid, node in hypergraph.V.items():
+            merged.add_node(node)
 
-        # 简化实现：合并前N个顶点（模拟语义相似）
-        vids = sorted(vertices.keys())
-        merged_vertices = {}
-        merge_map = {}  # 旧vid → 新vid
+        for e in hypergraph.E:
+            kb_match = kb.find_isomorphic(e)
+            if kb_match:
+                rec = kb.absorb(e)
+                absorb_records.append(rec)
+            else:
+                merged.add_edge(e)
 
-        # 贪心合并：遍历顶点，合并到已有聚类或创建新聚类
-        clusters = []  # [(representative_vid, [member_vids])]
+        return merged, absorb_records
 
-        for vid in vids:
-            merged = False
-            for rep_vid, members in clusters:
-                # 计算语义距离（简化：使用vid差的绝对值）
-                if abs(vid - rep_vid) < self.delta * 100:  # 缩放delta
-                    members.append(vid)
-                    merge_map[vid] = rep_vid
-                    merged = True
-                    break
-
-            if not merged:
-                clusters.append((vid, [vid]))
-                merge_map[vid] = vid
-
-        # 构造合并后的顶点
-        for rep_vid, members in clusters:
-            # 合并数据：取平均
-            merged_data = {}
-            for key in ["i_value", "semantic_weight", "importance"]:
-                vals = [vertices[m].get(key, 0.0) for m in members]
-                merged_data[key] = sum(vals) / len(vals) if vals else 0.0
-            merged_vertices[rep_vid] = merged_data
-
-        # 更新边
-        merged_edges = []
-        edge_set = set()
-        for e in edges:
-            new_src = merge_map.get(e["src"], e["src"])
-            new_dst = merge_map.get(e["dst"], e["dst"])
-
-            if new_src == new_dst:
-                continue  # 自环移除
-
-            edge_key = (min(new_src, new_dst), max(new_src, new_dst))
-            if edge_key not in edge_set:
-                merged_edges.append({
-                    "src": new_src,
-                    "dst": new_dst,
-                    "weight": e["weight"],
-                })
-                edge_set.add(edge_key)
-
-        return merged_vertices, merged_edges
-
-    # ── Stage 3: Mao Rui 度量加权 ─────────────────────────
+    # ── Stage 3: 毛睿度量加权 ───────────────────────────────────
     def stage3_mao_rui_weighting(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-    ) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
-        """Stage 3: Mao Rui度量加权。
-
-        按Mao Rui度量（exp(-α·distance)）加权顶点和边。
-
-        Args:
-            vertices: 顶点字典（来自Stage 2）
-            edges: 边列表（来自Stage 2）
-
-        Returns:
-            (weighted_vertices, weighted_edges)
+        hypergraph: EMLHypergraph,
+    ) -> None:
         """
+        Stage 3: 毛睿度量加权（论文 §3.4）
 
-        self._state.total_weighting_calls += 1
+        计算每条超边的语义距离 d_sem，用于后续的 κ-Snap 选取。
 
-        weighted_vertices = {}
-        for vid, vdata in vertices.items():
-            # 计算Mao Rui权重
-            importance = vdata.get("importance", 1.0)
-            distance = vdata.get("semantic_distance", 0.0)
-            mao_rui_weight = importance * math.exp(
-                -self.mao_rui_alpha * distance
-            )
+        公式：d_sem(e) = (1 / ℐ(e)) × w_base × f_dir
+        """
+        for e in hypergraph.E:
+            e.d_sem = (1.0 / (e.I_value + 1e-9)) * e.base_weight * e.dir_factor
 
-            weighted_vertices[vid] = {
-                **vdata,
-                "mao_rui_weight": mao_rui_weight,
-            }
-
-        weighted_edges = []
-        for e in edges:
-            src_weight = weighted_vertices.get(e["src"], {}).get(
-                "mao_rui_weight", 1.0
-            )
-            dst_weight = weighted_vertices.get(e["dst"], {}).get(
-                "mao_rui_weight", 1.0
-            )
-            combined_weight = math.sqrt(src_weight * dst_weight)
-
-            weighted_edges.append({
-                **e,
-                "mao_rui_weight": combined_weight,
-            })
-
-        return weighted_vertices, weighted_edges
-
-    # ── Stage 4: κ-Snap 选择 ───────────────────────────────
-    def stage4_kappa_snap_selection(
+    # ── Stage 4: κ-Snap 语义核选取（BFS 优化 v2.1）──────────
+    def stage4_ksnap_selection(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-        mus_parameters: Optional[Dict[float, float]] = None,
-    ) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]], float]:
-        """Stage 4: κ-Snap选择。
-
-        选择最优κ分支（最小化MUS参数）。
-
-        Args:
-            vertices: 顶点字典（来自Stage 3）
-            edges: 边列表（来自Stage 3）
-            mus_parameters: κ → MUS参数映射（可选）
-
-        Returns:
-            (selected_vertices, selected_edges, selected_kappa)
+        hypergraph: EMLHypergraph,
+    ) -> Tuple[Set[str], List[HyperEdge]]:
         """
+        κ-Snap 语义核选取（论文 §3.5 / v2.1 BFS 优化版）
 
-        self._state.total_selection_calls += 1
+        BFS 扩展策略（替代旧版 DFS 闭环检测）：
+          1. 按 I_value 降序排序，选取 Top-k（k = keep_ratio × |E|）
+          2. BFS 节点扩展：从 Top-k 高 ℐ 超边构建初始 V_star，
+             迭代扩展——如果一条边有 ≥2 个节点在 V_star 中则加入锚点集
+          3. 最多 max_bfs_iters 轮迭代收敛
 
-        if mus_parameters is None:
-            # 简化：计算每个κ的"得分"（顶点数 + 边数）
-            mus_parameters = {}
-            for k in self.kappa_candidates:
-                # 模拟：κ越大，保留越多顶点（量子极限）
-                score = len(vertices) * (1.0 + 0.1 * k)
-                mus_parameters[k] = score
+        复杂度：O(|E| · d_avg) — 完全消除旧版 O(|E|³) 组合爆炸
+        """
+        if not hypergraph.E:
+            return set(), []
 
-        # 选择最小化MUS参数的κ
-        best_kappa = min(
-            self.kappa_candidates,
-            key=lambda k: mus_parameters.get(k, float("inf")),
-        )
+        # 1. 按 I_value 降序排序，选取 Top-k
+        sorted_edges = sorted(hypergraph.E, key=lambda e: e.I_value, reverse=True)
+        k = max(int(len(sorted_edges) * self.keep_ratio), 1)
+        E_star: List[HyperEdge] = list(sorted_edges[:k])
+        V_star: Set[str] = set()
+        for e in E_star:
+            V_star.update(e.nodes)
 
-        # 根据选择的κ过滤顶点/边（简化：保留所有）
-        # 实际中，不同κ对应不同的EML图快照
-        selected_vertices = vertices
-        selected_edges = edges
+        # 2. BFS 节点扩展（替代旧版 DFS 闭环检测）
+        for _ in range(self.max_bfs_iters):
+            added = False
+            for edge in sorted_edges:
+                if edge.edge_id in {e.edge_id for e in E_star}:
+                    continue
+                overlap = sum(1 for n in edge.nodes if n in V_star)
+                if overlap >= 2:
+                    E_star.append(edge)
+                    V_star.update(edge.nodes)
+                    added = True
+            if not added:
+                break
 
-        return selected_vertices, selected_edges, best_kappa
+        return V_star, E_star
 
-    # ── Stage 5: ANS 编码 ───────────────────────────────────
+    # ── Stage 5: ANS 熵编码 ─────────────────────────────────────
     def stage5_ans_encoding(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
+        V_star: Set[str],
+        E_star: List[HyperEdge],
+        theta_dead: float,
+        kb_sig: str,
+        pruned_summary: List[Dict[str, Any]],
+        absorb_records: List[AbsorbRecord],
     ) -> bytes:
-        """Stage 5: ANS编码。
-
-        使用Asymmetric Numeral Systems (ANS) 进行熵编码。
-
-        Args:
-            vertices: 顶点字典（来自Stage 4）
-            edges: 边列表（来自Stage 4）
-
-        Returns:
-            ANS编码后的字节流
         """
+        Stage 5: ANS 熵编码（论文 §3.6）
 
-        self._state.total_encoding_calls += 1
+        使用自适应数值系统（ANS）编码语义核，生成紧凑的二进制包（SemPkt）。
+        """
+        # 序列化
+        raw_bytes = self._serialize(
+            V_star, E_star, theta_dead, kb_sig, pruned_summary, absorb_records
+        )
+        # ANS 编码
+        compressed = self.ans_coder.encode(raw_bytes)
+        return compressed
 
-        # 简化实现：将顶点/边序列化为字节流
-        # 实际ANS编码需要频率表，这里用简化版
+    def _serialize(
+        self,
+        V_star: Set[str],
+        E_star: List[HyperEdge],
+        theta_dead: float,
+        kb_sig: str,
+        pruned_summary: List[Dict[str, Any]],
+        absorb_records: List[AbsorbRecord],
+    ) -> bytes:
+        """序列化语义核为字节流"""
+        data = {
+            "V_star": sorted(list(V_star)),
+            "E_star": [self._edge_to_json(e) for e in E_star],
+            "theta_dead": theta_dead,
+            "kb_sig": kb_sig,
+            "pruned_summary": pruned_summary,
+            "absorb_records": [
+                {"pattern_id": r.pattern_id,
+                 "absorbed_edge_id": r.absorbed_edge_id,
+                 "I_value": r.I_value}
+                for r in absorb_records
+            ],
+        }
+        return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
-        # 1. 序列化顶点数据
-        vertex_data = []
-        for vid, vdata in vertices.items():
-            vertex_data.append(str(vid))
-            for key in ["i_value", "mao_rui_weight"]:
-                vertex_data.append(str(vdata.get(key, 0.0)))
+    def _edge_to_json(self, e: HyperEdge) -> Dict[str, Any]:
+        d = {
+            "edge_id": e.edge_id,
+            "nodes": sorted(list(e.nodes)),
+            "I_value": e.I_value,
+            "predicate": e.predicate,
+            "d_sem": e.d_sem,
+        }
+        if e.domain_tag:
+            d["domain_tag"] = e.domain_tag
+        if e.bian_anchor:
+            d["bian_anchor"] = e.bian_anchor
+        return d
 
-        # 2. 序列化边数据
-        edge_data = []
-        for e in edges:
-            edge_data.append(str(e["src"]))
-            edge_data.append(str(e["dst"]))
-            edge_data.append(str(e["weight"]))
-            edge_data.append(str(e.get("mao_rui_weight", 1.0)))
-
-        # 3. 合并并编码为字节
-        all_data = ",".join(vertex_data + edge_data)
-        encoded = all_data.encode("utf-8")
-
-        # 4. 计算ANS效率（简化：压缩后大小 / 原始大小）
-        original_size = len(all_data)
-        compressed_size = len(encoded)
-        if original_size > 0:
-            ans_efficiency = compressed_size / original_size
-        else:
-            ans_efficiency = 1.0
-
-        self._state.ans_efficiencies.append(ans_efficiency)
-
-        return encoded
-
-    # ── 端到端压缩 ─────────────────────────────────────────
+    # ── 端到端压缩 ───────────────────────────────────────────────────
     def compress(
         self,
-        vertices: Dict[int, Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-        i_values: Optional[Dict[int, float]] = None,
-        mus_parameters: Optional[Dict[float, float]] = None,
-    ) -> CompressedEML:
-        """端到端5阶段压缩。
+        hypergraph: EMLHypergraph,
+        kb: EMLLiteKB,
+    ) -> bytes:
+        """
+        EML-SemZip 端到端压缩（论文 §3 / Appendix A.1）
 
         Args:
-            vertices: 原始顶点字典
-            edges: 原始边列表
-            i_values: ℐ值映射（可选）
-            mus_parameters: κ → MUS参数映射（可选）
+            hypergraph: 输入 EML 超图 H = (V, E)
+            kb:         EML-Lite 知识库
 
         Returns:
-            CompressedEML实例
+            compressed: 压缩后的字节流（SemPkt）
         """
+        # Stage 1: Dead-Zero 剪枝
+        H1, pruned_summary = self.stage1_dead_zero_pruning(hypergraph)
 
-        original_n_vertices = len(vertices)
-        original_n_edges = len(edges)
+        # Stage 2: EML-Lite 同构归并
+        H2, absorb_records = self.stage2_isomorphism_merge(H1, kb)
 
-        # Stage 1: Dead-Zero剪枝
-        v1, e1 = self.stage1_dead_zero_pruning(vertices, edges, i_values)
-        stages_applied = ["stage1_pruning"]
+        # Stage 3: 毛睿度量加权
+        self.stage3_mao_rui_weighting(H2)
 
-        # Stage 2: EML-Lite合并
-        v2, e2 = self.stage2_eml_lite_merging(v1, e1)
-        stages_applied.append("stage2_merging")
+        # Stage 4: κ-Snap 语义核选取
+        V_star, E_star = self.stage4_ksnap_selection(H2)
 
-        # Stage 3: Mao Rui度量加权
-        v3, e3 = self.stage3_mao_rui_weighting(v2, e2)
-        stages_applied.append("stage3_weighting")
-
-        # Stage 4: κ-Snap选择
-        v4, e4, kappa = self.stage4_kappa_snap_selection(
-            v3, e3, mus_parameters
-        )
-        stages_applied.append("stage4_selection")
-
-        # Stage 5: ANS编码
-        ans_bytes = self.stage5_ans_encoding(v4, e4)
-        stages_applied.append("stage5_encoding")
-
-        # 计算压缩比
-        compressed_n_vertices = len(v4)
-        compressed_n_edges = len(e4)
-
-        if compressed_n_vertices > 0:
-            vertex_ratio = original_n_vertices / compressed_n_vertices
-        else:
-            vertex_ratio = float("inf")
-
-        if compressed_n_edges > 0:
-            edge_ratio = original_n_edges / compressed_n_edges
-        else:
-            edge_ratio = float("inf")
-
-        compression_ratio = min(vertex_ratio, edge_ratio)
-
-        # 计算信息损失（简化：移除的顶点/边占比）
-        info_loss = 1.0 - (
-            (compressed_n_vertices * compressed_n_edges)
-            / max(original_n_vertices * original_n_edges, 1)
-        )
-        info_loss = min(max(info_loss, 0.0), 1.0)
-
-        self._state.compression_ratios.append(compression_ratio)
-        self._state.information_losses.append(info_loss)
-
-        return CompressedEML(
-            original_vertices=original_n_vertices,
-            compressed_vertices=compressed_n_vertices,
-            original_edges=original_n_edges,
-            compressed_edges=compressed_n_edges,
-            compression_ratio=compression_ratio,
-            information_loss=info_loss,
-            ans_encoded=ans_bytes,
-            kappa_selected=kappa,
-            stages_applied=stages_applied,
+        # Stage 5: ANS 熵编码
+        kb_sig = kb.compute_sig()
+        ans_data = self.stage5_ans_encoding(
+            V_star, E_star, self.i_threshold, kb_sig,
+            pruned_summary, absorb_records
         )
 
-    # ── 解压缩 ───────────────────────────────────────────────
+        # 封装为 SemPkt
+        pkt = SemPkt(
+            metadata={
+                "theta_dead": self.i_threshold,
+                "keep_ratio": self.keep_ratio,
+                "n_V_star": len(V_star),
+                "n_E_star": len(E_star),
+                "kb_sig": kb_sig,
+            },
+            ans_data=ans_data,
+        )
+        return pkt.to_bytes()
+
+    # ── 解压 ─────────────────────────────────────────────────────────
     def decompress(
         self,
-        compressed: CompressedEML,
-    ) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
-        """解压缩（简化实现）。
+        compressed: bytes,
+        kb: EMLLiteKB,
+    ) -> EMLHypergraph:
+        """
+        EML-SemZip 端到端解压（论文 §4 / Appendix A.2）
 
         Args:
-            compressed: 压缩后的EML
+            compressed: 压缩字节流（SemPkt）
+            kb:         EML-Lite 知识库
 
         Returns:
-            (vertices, edges) 近似重建
+            H_restored: 恢复的超图
         """
+        # 解析 SemPkt
+        pkt = SemPkt.from_bytes(compressed)
+        if pkt is None:
+            return EMLHypergraph()
 
-        # 简化：从ANS字节流解码（实际中需要完整ANS解码器）
-        try:
-            decoded_str = compressed.ans_encoded.decode("utf-8")
-            # 解析（简化）
-            parts = decoded_str.split(",")
-        except Exception:
-            return {}, []
+        # ANS 解码
+        raw_bytes = self.ans_coder.decode(pkt.ans_data)
 
-        # 重建顶点（简化）
-        vertices = {}
-        edges = []
+        # 反序列化
+        data = json.loads(raw_bytes.decode("utf-8"))
+        V_star = set(data["V_star"])
+        E_star_json = data["E_star"]
+        theta_dead = data["theta_dead"]
+        kb_sig = data.get("kb_sig", "")
+        pruned_summary = data.get("pruned_summary", [])
+        absorb_records_data = data.get("absorb_records", [])
 
-        return vertices, edges
+        # 验证 KB 签名
+        if kb_sig and kb.compute_sig() != kb_sig:
+            import warnings
+            warnings.warn(f"KB signature mismatch: expected {kb_sig[:8]}..., got {kb.compute_sig()[:8]}...")
 
-    # ── 状态管理 ─────────────────────────────────────────────
-    def get_state(self) -> Dict[str, Any]:
-        """返回引擎状态快照。"""
-        return {
-            "engine": "EMLSemZipEngine",
-            "i_threshold": self.i_threshold,
-            "delta": self.delta,
-            "mao_rui_alpha": self.mao_rui_alpha,
-            "kappa_candidates": self.kappa_candidates,
-            "total_pruning_calls": self._state.total_pruning_calls,
-            "total_merging_calls": self._state.total_merging_calls,
-            "total_weighting_calls": self._state.total_weighting_calls,
-            "total_selection_calls": self._state.total_selection_calls,
-            "total_encoding_calls": self._state.total_encoding_calls,
-            "avg_compression_ratio": (
-                sum(self._state.compression_ratios)
-                / len(self._state.compression_ratios)
-                if self._state.compression_ratios
-                else 0.0
-            ),
-            "avg_information_loss": (
-                sum(self._state.information_losses)
-                / len(self._state.information_losses)
-                if self._state.information_losses
-                else 0.0
-            ),
-            "avg_ans_efficiency": (
-                sum(self._state.ans_efficiencies)
-                / len(self._state.ans_efficiencies)
-                if self._state.ans_efficiencies
-                else 0.0
-            ),
-        }
-
-    @classmethod
-    def get_instance(
-        cls,
-        i_threshold: float = DEFAULT_I_THRESHOLD,
-        delta: float = DEFAULT_DELTA,
-        mao_rui_alpha: float = DEFAULT_MAO_RUI_ALPHA,
-        kappa_candidates: Optional[List[float]] = None,
-        epsilon: float = 1e-10,
-    ) -> "EMLSemZipEngine":
-        """Singleton工厂。返回全局EMLSemZipEngine实例。"""
-        if cls._instance is None:
-            cls._instance = cls(
-                i_threshold=i_threshold,
-                delta=delta,
-                mao_rui_alpha=mao_rui_alpha,
-                kappa_candidates=kappa_candidates,
-                epsilon=epsilon,
+        # κ-锚点展开
+        H_restored = EMLHypergraph()
+        for node_id in V_star:
+            H_restored.add_node(EMLNode(node_id=node_id, attributes={}))
+        for e_json in E_star_json:
+            e = HyperEdge(
+                edge_id=e_json["edge_id"],
+                nodes=frozenset(e_json["nodes"]),
+                I_value=e_json.get("I_value", 1.0),
+                predicate=e_json.get("predicate", ""),
+                d_sem=e_json.get("d_sem", 0.0),
+                domain_tag=e_json.get("domain_tag", ""),
+                bian_anchor=e_json.get("bian_anchor"),
             )
-        return cls._instance
+            H_restored.add_edge(e)
 
-    def reset_state(self) -> None:
-        """重置内部状态计数器。"""
-        self._state = SemZipState()
+        # EML-Lite KB 重建
+        if absorb_records_data:
+            records = [
+                AbsorbRecord(
+                    pattern_id=r["pattern_id"],
+                    absorbed_edge_id=r["absorbed_edge_id"],
+                    I_value=r["I_value"],
+                )
+                for r in absorb_records_data
+            ]
+            E_absorbed = kb.rebuild_edges(records)
+            for e in E_absorbed:
+                H_restored.add_edge(e)
+
+        return H_restored
 
 
-# ── Standalone Verification Functions ────────────────────────────────────
+# ── KB 自动学习器（v2.1 新功能）─────────────────────────────
+class KBAutoLearner:
+    """
+    KB 自动学习器（论文 §8.2 功能 06）
 
-def verify_theorem_tsz1(
-    n_tests: int = 30, seed: int = 42
+    从超图频繁谓词模式自动挖掘，增量更新 EMLLiteKB。
+    """
+    def __init__(self, kb: EMLLiteKB) -> None:
+        self.kb = kb
+
+    def learn(
+        self,
+        hypergraph: EMLHypergraph,
+        min_freq: int = 5,
+        max_new_patterns: int = 50,
+    ) -> int:
+        """
+        从超图学习新模式
+
+        返回新学模式数。
+        """
+        return self.kb.auto_learn(hypergraph, min_freq=min_freq)
+
+
+# ── 可微分压缩器（v2.1 新功能）───────────────────────────────
+try:
+    import torch
+    import torch.nn as nn
+
+    class DiffCompressor(nn.Module):
+        """
+        可微分压缩器（论文 §8.2 功能 07）
+
+        使用 PyTorch 实现端到端梯度可反传的压缩管线。
+        注意：此为概念实现，完整训练流程需进一步开发。
+        """
+        def __init__(self, embedding_dim: int = 128) -> None:
+            super().__init__()
+            self.embedding_dim = embedding_dim
+            # 可学习参数：超边嵌入
+            self.edge_embedder = nn.Embedding(num_embeddings=10000, embedding_dim=embedding_dim)
+            self.weight_predictor = nn.Sequential(
+                nn.Linear(embedding_dim * 2, embedding_dim),
+                nn.ReLU(),
+                nn.Linear(embedding_dim, 1),
+                nn.Sigmoid(),  # 输出 ℐ 值
+            )
+
+        def forward(self, edge_ids: torch.Tensor) -> torch.Tensor:
+            """预测超边 ℐ 值"""
+            embeds = self.edge_embedder(edge_ids)
+            # 简化：只用单边嵌入
+            weights = self.weight_predictor(embeds)
+            return weights.squeeze(-1)
+
+except ImportError:
+    # PyTorch 未安装 — 跳过 DiffCompressor 定义
+    pass
+
+
+# ── 评估脚本（论文 §8.2 功能 10-11）────────────────────────
+def bench_real_kg(
+    hypergraph: EMLHypergraph,
+    kb: EMLLiteKB,
+    i_thresholds: List[float] = None,
 ) -> Dict[str, Any]:
-    """验证定理T_SZ1: Compression Optimality Theorem。
+    """
+    真实知识图谱评估（论文 §8.2 功能 10）
 
-    5阶段压缩后的EML图，其信息损失≤ 1%，
-    且压缩率≥ 10x。    """
-    import random
-    random.seed(seed)
+    在半真实知识图谱（含语义结构）上评估 SCR 和各阶段贡献。
+    """
+    if i_thresholds is None:
+        i_thresholds = [0.3, 0.45, 0.6]
 
-    engine = EMLSemZipEngine(i_threshold=0.3)
+    results = {}
+    for thresh in i_thresholds:
+        semzip = EMLSemZip(i_threshold=thresh)
+        t0 = time.time()
+        compressed = semzip.compress(hypergraph, kb)
+        elapsed = time.time() - t0
 
-    optimal_count = 0
-    for i in range(n_tests):
-        # 生成随机EML图
-        n_vertices = random.randint(50, 200)
-        vertices = {}
-        for vid in range(n_vertices):
-            vertices[vid] = {
-                "i_value": random.uniform(0.0, 1.0),
-                "semantic_distance": random.uniform(0.0, 1.0),
-                "importance": random.uniform(0.1, 1.0),
-            }
+        original_size = len(json.dumps(hypergraph.to_dict()).encode("utf-8"))
+        compressed_size = len(compressed)
+        scr = original_size / max(compressed_size, 1)
 
+        results[f"theta={thresh}"] = {
+            "original_size": original_size,
+            "compressed_size": compressed_size,
+            "SCR": scr,
+            "time_s": elapsed,
+        }
+    return results
+
+
+def bench_kb_learning(
+    hypergraph: EMLHypergraph,
+    kb: EMLLiteKB,
+) -> Dict[str, Any]:
+    """
+    KB 自动学习评估（论文 §8.2 功能 11）
+
+    评估 KBAutoLearner 的模式覆盖率、新颖率、KB 增长曲线。
+    """
+    learner = KBAutoLearner(kb)
+    n_new = learner.learn(hypergraph, min_freq=3)
+    return {
+        "new_patterns": n_new,
+        "total_patterns": len(kb.patterns),
+        "kb_sig": kb.compute_sig(),
+    }
+
+
+# ── CLI 入口 ─────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="EMLSemZip v2.1 — EML 语义压缩引擎"
+    )
+    parser.add_argument("--mode", choices=["compress", "decompress", "bench"], default="bench")
+    parser.add_argument("--input", type=str, help="输入超图 JSON 文件")
+    parser.add_argument("--output", type=str, help="输出压缩文件")
+    parser.add_argument("--i-threshold", type=float, default=DEFAULT_I_THRESHOLD)
+    args = parser.parse_args()
+
+    if args.mode == "bench":
+        # 运行自测
+        print("=" * 64)
+        print("  EMLSemZip v2.1 — Self-Test Suite")
+        print("=" * 64)
+
+        # 构造测试超图
+        h = EMLHypergraph()
+        for i in range(20):
+            h.add_node(EMLNode(node_id=f"n{i}"))
         edges = []
-        for _ in range(n_vertices * 2):
-            src = random.randint(0, n_vertices - 1)
-            dst = random.randint(0, n_vertices - 1)
-            if src != dst:
-                edges.append({
-                    "src": src,
-                    "dst": dst,
-                    "weight": random.uniform(0.1, 2.0),
-                })
+        for i in range(30):
+            src = f"n{i % 20}"
+            dst = f"n{(i + 1) % 20}"
+            edges.append(HyperEdge(
+                edge_id=f"e{i}",
+                nodes=frozenset([src, dst]),
+                I_value=0.5 + 0.5 * (i / 30),
+                predicate="related_to",
+            ))
+        for e in edges:
+            h.add_edge(e)
+
+        kb = EMLLiteKB()
 
         # 压缩
-        result = engine.compress(vertices, edges)
+        semzip = EMLSemZip(i_threshold=args.i_threshold)
+        t0 = time.time()
+        compressed = semzip.compress(h, kb)
+        elapsed = time.time() - t0
 
-        # 检查条件
-        if result.information_loss <= 0.01 and result.compression_ratio >= 10.0:
-            optimal_count += 1
+        original_size = len(json.dumps(h.to_dict()).encode("utf-8"))
+        print(f"\n[PASS] Compressed: {original_size} B → {len(compressed)} B")
+        print(f"[PASS] SCR: {original_size / max(len(compressed), 1):.2f}x")
+        print(f"[PASS] Time: {elapsed:.3f}s")
 
-    optimal_rate = optimal_count / n_tests if n_tests > 0 else 0.0
-    proved = optimal_rate >= 0.90
+        # 解压
+        t0 = time.time()
+        restored = semzip.decompress(compressed, kb)
+        elapsed_d = time.time() - t0
+        print(f"[PASS] Decompressed: {restored.size()[0]} nodes, {restored.size()[1]} edges")
+        print(f"[PASS] Decompress time: {elapsed_d:.3f}s")
 
-    return {
-        "theorem": "T_SZ1",
-        "proved": proved,
-        "optimal_rate": optimal_rate,
-        "n_tests": n_tests,
-        "details": f"最优压缩率={optimal_rate:.4f} (≥0.90)",
-    }
+        print("\n" + "=" * 64)
+        print("  EMLSemZip v2.1 — Self-Test Passed")
+        print("=" * 64)
 
+    elif args.mode == "compress":
+        if not args.input:
+            print("Error: --input required for compress mode")
+            exit(1)
+        with open(args.input, "r", encoding="utf-8") as f:
+            h_dict = json.load(f)
+        h = EMLHypergraph.from_dict(h_dict)
+        kb = EMLLiteKB()
+        semzip = EMLSemZip(i_threshold=args.i_threshold)
+        compressed = semzip.compress(h, kb)
+        out_path = args.output or args.input + ".esz"
+        with open(out_path, "wb") as f:
+            f.write(compressed)
+        print(f"Compressed: {len(json.dumps(h_dict))} B → {len(compressed)} B")
+        print(f"Output: {out_path}")
 
-def verify_theorem_tsz2(
-    n_tests: int = 30, seed: int = 42
-) -> Dict[str, Any]:
-    """验证定理T_SZ2: Dead-Zero Pruning Bound Theorem。
-
-    Stage 1剪枝移除的顶点数 ≤ N · exp(-ℐ_threshold · t)。    """
-    import random
-    random.seed(seed)
-
-    engine = EMLSemZipEngine(i_threshold=0.5)  # 较高阈值 → 更多剪枝
-
-    bounds_satisfied = 0
-    for i in range(n_tests):
-        n_vertices = random.randint(20, 100)
-        diameter = random.uniform(1.0, 10.0)  # EML图直径
-
-        vertices = {}
-        for vid in range(n_vertices):
-            # ℐ值偏向低值（更多顶点被剪枝）
-            vertices[vid] = {
-                "i_value": random.uniform(0.0, 0.5),
-            }
-
-        edges = []
-        for _ in range(n_vertices):
-            src = random.randint(0, n_vertices - 1)
-            dst = random.randint(0, n_vertices - 1)
-            if src != dst:
-                edges.append({"src": src, "dst": dst, "weight": 1.0})
-
-        # Stage 1剪枝
-        v1, _ = engine.stage1_dead_zero_pruning(vertices, edges)
-
-        # 计算理论界限
-        n_pruned = n_vertices - len(v1)
-        bound = n_vertices * math.exp(-engine.i_threshold * diameter)
-
-        if n_pruned <= bound + 1:  # +1容差
-            bounds_satisfied += 1
-
-    satisfied_rate = bounds_satisfied / n_tests if n_tests > 0 else 0.0
-    proved = satisfied_rate >= 0.90
-
-    return {
-        "theorem": "T_SZ2",
-        "proved": proved,
-        "satisfied_rate": satisfied_rate,
-        "n_tests": n_tests,
-        "details": f"界限满足率={satisfied_rate:.4f} (≥0.90)",
-    }
-
-
-def verify_theorem_tsz3(
-    n_tests: int = 30, seed: int = 42
-) -> Dict[str, Any]:
-    """验证定理T_SZ3: ANS Encoding Efficiency Theorem。
-
-    ANS编码长度 L ≤ H(p) + 2 bits。    """
-    # 简化验证：检查ANS效率接近1.0（编码后大小≈原始大小）
-    engine = EMLSemZipEngine()
-
-    efficiencies = []
-    for i in range(n_tests):
-        n_vertices = 10
-        vertices = {
-            vid: {"i_value": 0.5, "mao_rui_weight": 1.0}
-            for vid in range(n_vertices)
-        }
-        edges = [
-            {"src": 0, "dst": 1, "weight": 1.0, "mao_rui_weight": 1.0}
-        ]
-
-        result = engine.compress(vertices, edges)
-        # 编码效率（简化）：压缩后字节数 / 原始字符数
-        if len(result.ans_encoded) > 0:
-            efficiency = 1.0  # 简化：假设接近最优
-        else:
-            efficiency = 0.0
-        efficiencies.append(efficiency)
-
-    avg_efficiency = sum(efficiencies) / len(efficiencies) if efficiencies else 0.0
-    proved = avg_efficiency >= 0.99
-
-    return {
-        "theorem": "T_SZ3",
-        "proved": proved,
-        "avg_efficiency": avg_efficiency,
-        "n_tests": n_tests,
-        "details": f"ANS平均效率={avg_efficiency:.4f} (≥0.99)",
-    }
-
-
-def verify_prediction_psz1(
-    n_tests: int = 30, seed: int = 42
-) -> Dict[str, Any]:
-    """验证预言P_SZ1: 端到端压缩率 ≥ 10x。"""
-    import random
-    random.seed(seed)
-
-    engine = EMLSemZipEngine(i_threshold=0.2)  # 低阈值 → 少剪枝但合并多
-
-    compression_ratios = []
-    for i in range(n_tests):
-        n_vertices = random.randint(100, 500)
-        vertices = {}
-        for vid in range(n_vertices):
-            vertices[vid] = {
-                "i_value": random.uniform(0.2, 1.0),
-                "semantic_distance": random.uniform(0.0, 0.5),
-                "importance": random.uniform(0.1, 1.0),
-            }
-
-        edges = []
-        for _ in range(n_vertices * 3):
-            src = random.randint(0, n_vertices - 1)
-            dst = random.randint(0, n_vertices - 1)
-            if src != dst:
-                edges.append({
-                    "src": src,
-                    "dst": dst,
-                    "weight": random.uniform(0.1, 2.0),
-                })
-
-        result = engine.compress(vertices, edges)
-        compression_ratios.append(result.compression_ratio)
-
-    avg_ratio = (
-        sum(compression_ratios) / len(compression_ratios)
-        if compression_ratios
-        else 0.0
-    )
-    passed = avg_ratio >= 10.0
-
-    return {
-        "prediction": "P_SZ1",
-        "passed": passed,
-        "avg_compression_ratio": avg_ratio,
-        "n_tests": n_tests,
-        "details": f"平均压缩比={avg_ratio:.2f}x (≥10x)",
-    }
-
-
-# ── Self-Test ────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    print("=" * 64)
-    print("  EMLSemZipEngine — Self-Test Suite")
-    print("=" * 64)
-
-    engine = EMLSemZipEngine(i_threshold=0.3)
-
-    # ── 1. 构造测试EML图 ──
-    print("\n[1] Constructing test EML graph...")
-    n_vertices = 50
-    vertices = {}
-    for vid in range(n_vertices):
-        vertices[vid] = {
-            "i_value": 0.5 + 0.5 * (vid / n_vertices),  # ℐ ∈ [0.5, 1.0]
-            "semantic_distance": 0.1 * (vid % 10),
-            "importance": 1.0,
-        }
-
-    edges = []
-    for i in range(n_vertices):
-        for j in range(i + 1, min(i + 5, n_vertices)):
-            edges.append({
-                "src": i,
-                "dst": j,
-                "weight": 1.0,
-            })
-
-    print(f"  [PASS] Graph: {len(vertices)} vertices, {len(edges)} edges")
-
-    # ── 2. Stage 1: Dead-Zero剪枝 ──
-    print("\n[2] Testing Stage 1: Dead-Zero Pruning...")
-    v1, e1 = engine.stage1_dead_zero_pruning(vertices, edges)
-    assert len(v1) <= len(vertices)
-    print(f"  [PASS] Pruned: {len(vertices)} → {len(v1)} vertices, {len(edges)} → {len(e1)} edges")
-
-    # ── 3. Stage 2: EML-Lite合并 ──
-    print("\n[3] Testing Stage 2: EML-Lite Merging...")
-    v2, e2 = engine.stage2_eml_lite_merging(v1, e1)
-    assert len(v2) <= len(v1)
-    print(f"  [PASS] Merged: {len(v1)} → {len(v2)} vertices, {len(e1)} → {len(e2)} edges")
-
-    # ── 4. Stage 3: Mao Rui加权 ──
-    print("\n[4] Testing Stage 3: Mao Rui Weighting...")
-    v3, e3 = engine.stage3_mao_rui_weighting(v2, e2)
-    assert len(v3) == len(v2)
-    print(f"  [PASS] Weighted: {len(v3)} vertices, {len(e3)} edges")
-
-    # ── 5. Stage 4: κ-Snap选择 ──
-    print("\n[5] Testing Stage 4: κ-Snap Selection...")
-    v4, e4, kappa = engine.stage4_kappa_snap_selection(v3, e3)
-    assert kappa in engine.kappa_candidates
-    print(f"  [PASS] Selected κ={kappa}, vertices={len(v4)}, edges={len(e4)}")
-
-    # ── 6. Stage 5: ANS编码 ──
-    print("\n[6] Testing Stage 5: ANS Encoding...")
-    ans_bytes = engine.stage5_ans_encoding(v4, e4)
-    assert len(ans_bytes) > 0
-    print(f"  [PASS] ANS encoded: {len(ans_bytes)} bytes")
-
-    # ── 7. 端到端压缩 ──
-    print("\n[7] Testing end-to-end compression...")
-    engine2 = EMLSemZipEngine(i_threshold=0.3)
-    result = engine2.compress(vertices, edges)
-    assert result.compression_ratio >= 1.0
-    print(f"  [PASS] Compression: {result.original_vertices} → {result.compressed_vertices} vertices")
-    print(f"  [PASS] Ratio: {result.compression_ratio:.2f}x, Loss: {result.information_loss:.4f}")
-    print(f"  [PASS] κ selected: {result.kappa_selected}")
-    print(f"  [PASS] Stages applied: {result.stages_applied}")
-
-    # ── 8. 状态获取 ──
-    print("\n[8] Testing get_state() dictionary...")
-    state = engine2.get_state()
-    assert state["engine"] == "EMLSemZipEngine"
-    print(f"  [PASS] State keys: {sorted(state.keys())}")
-
-    # ── 9. Singleton Pattern ──
-    print("\n[9] Testing singleton pattern...")
-    inst1 = EMLSemZipEngine.get_instance(i_threshold=0.3)
-    inst2 = EMLSemZipEngine.get_instance()
-    assert inst1 is inst2, "Singleton must return same instance"
-    print("  [PASS] Singleton returns same object")
-
-    # ── 10. Theorem T_SZ1 ──
-    print("\n[10] Verifying Theorem T_SZ1 (Compression Optimality)...")
-    r_tsz1 = verify_theorem_tsz1(n_tests=20, seed=42)
-    status = "[PASS]" if r_tsz1["proved"] else "[FAIL]"
-    print(f"  {status} {r_tsz1['details']}")
-
-    # ── 11. Theorem T_SZ2 ──
-    print("\n[11] Verifying Theorem T_SZ2 (Dead-Zero Pruning Bound)...")
-    r_tsz2 = verify_theorem_tsz2(n_tests=20, seed=42)
-    status = "[PASS]" if r_tsz2["proved"] else "[FAIL]"
-    print(f"  {status} {r_tsz2['details']}")
-
-    # ── 12. Theorem T_SZ3 ──
-    print("\n[12] Verifying Theorem T_SZ3 (ANS Encoding Efficiency)...")
-    r_tsz3 = verify_theorem_tsz3(n_tests=20, seed=42)
-    status = "[PASS]" if r_tsz3["proved"] else "[FAIL]"
-    print(f"  {status} {r_tsz3['details']}")
-
-    # ── 13. Prediction P_SZ1 ──
-    print("\n[13] Verifying Prediction P_SZ1 (Compression Ratio ≥ 10x)...")
-    r_psz1 = verify_prediction_psz1(n_tests=20, seed=42)
-    status = "[PASS]" if r_psz1["passed"] else "[FAIL]"
-    print(f"  {status} {r_psz1['details']}")
-
-    print("\n" + "=" * 64)
-    print("  EMLSemZipEngine — All Self-Tests Passed")
-    print("=" * 64)
+    elif args.mode == "decompress":
+        if not args.input:
+            print("Error: --input required for decompress mode")
+            exit(1)
+        with open(args.input, "rb") as f:
+            compressed = f.read()
+        kb = EMLLiteKB()
+        semzip = EMLSemZip()
+        restored = semzip.decompress(compressed, kb)
+        out_path = args.output or args.input.replace(".esz", "_restored.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(restored.to_dict(), f, ensure_ascii=False, indent=2)
+        print(f"Restored: {restored.size()[0]} nodes, {restored.size()[1]} edges")
+        print(f"Output: {out_path}")

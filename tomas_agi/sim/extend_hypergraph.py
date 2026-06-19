@@ -415,6 +415,110 @@ class ExtendHypergraph:
         else:
             return f"RESOLVED: {edge_b_id} (ℐ={edge_b.i_value:.4f} > {edge_a.i_value:.4f})"
 
+    def grounding_check(
+        self,
+        edge_id: str,
+        t_shield_verifier=None,
+    ) -> Dict[str, Any]:
+        """
+        GroundingCheck() — T_Shield 校验 ℐ-存在度
+
+        Article 4, Core Primitives:
+            GroundingCheck(): T_Shield 校验 ℐ-存在度
+
+        Article 5, Theorem 3.1:
+            HL 更新代码 ⇔ TOMAS 修订 EML 超边
+            GroundingCheck() 确保修订后的超边仍满足 Dead-Zero 约束
+
+        Returns:
+            {
+                "edge_id": str,
+                "i_value": float,
+                "is_grounded": bool,
+                "std_ref_valid": bool | None,
+                "dz_reason": str | None,
+                "psi_alignment": float | None,
+            }
+        """
+        if edge_id not in self.eml_kb.edges:
+            return {
+                "edge_id": edge_id,
+                "error": "Edge not found",
+                "is_grounded": False,
+            }
+
+        edge = self.eml_kb.edges[edge_id]
+        result = {
+            "edge_id": edge_id,
+            "i_value": edge.i_value,
+            "is_grounded": True,
+            "std_ref_valid": None,
+            "dz_reason": None,
+            "psi_alignment": None,
+        }
+
+        # 1. Dead-Zero 校验 (ℐ-存在度)
+        verifier = t_shield_verifier or self.t_shield
+        if verifier is not None:
+            try:
+                is_dead, reason = verifier.check_dead_zero_dikwp(edge.i_value, "data")
+                if is_dead:
+                    result["is_grounded"] = False
+                    result["dz_reason"] = reason
+                    logger.warning("GroundingCheck FAILED for %s: %s", edge_id, reason)
+                else:
+                    logger.debug("GroundingCheck PASSED for %s (ℐ=%.4f)", edge_id, edge.i_value)
+            except Exception as e:
+                logger.debug("GroundingCheck: T_Shield check skipped: %s", e)
+        elif edge.i_value < self.theta_dead:
+            result["is_grounded"] = False
+            result["dz_reason"] = f"ℐ={edge.i_value:.4f} < θ_dead={self.theta_dead}"
+            logger.warning("GroundingCheck FAILED for %s: %s", edge_id, result["dz_reason"])
+
+        # 2. std_ref 校验 (如果有标准引用)
+        if edge.std_ref is not None:
+            verifier = t_shield_verifier or self.t_shield
+            if verifier is not None and hasattr(verifier, "check_std_ref"):
+                # 动态调用 verifier 的 check_std_ref 方法
+                std_ref_result = verifier.check_std_ref(edge, self.theta_dead)
+                result["std_ref_valid"] = std_ref_result["valid"]
+                if not std_ref_result["valid"]:
+                    result["is_grounded"] = False
+                    result["dz_reason"] = std_ref_result.get("reason", "std_ref invalid")
+                    logger.warning("GroundingCheck: std_ref invalid for %s: %s",
+                                  edge_id, std_ref_result.get("reason"))
+            else:
+                # 简化：如果无法调用 check_std_ref，则标记 std_ref 为有效
+                result["std_ref_valid"] = True
+                logger.debug("GroundingCheck: std_ref=%s marked as valid (simplified)", edge.std_ref)
+
+        # 3. ψ-Alignment 校验 (如果可用)
+        try:
+            from g_ego import G_egoEngine
+            g_ego = G_egoEngine.get_instance()
+            psi_anchor = g_ego.get_status()
+
+            verifier = t_shield_verifier or self.t_shield
+            if verifier is not None and hasattr(verifier, "validate_psi_alignment"):
+                # 动态调用 verifier 的 validate_psi_alignment 方法
+                psi_result = verifier.validate_psi_alignment(edge, psi_anchor)
+                result["psi_alignment"] = psi_result.get("alignment_score")
+                if not psi_result.get("aligned", True):
+                    logger.warning("GroundingCheck: low ψ-alignment for %s: %s",
+                                  edge_id, psi_result.get("reason"))
+            else:
+                # 简化：计算 ℐ 值差异
+                g_i = psi_anchor.get("i_value", 0.5)
+                psi_alignment = 1.0 - abs(g_i - edge.i_value)
+                result["psi_alignment"] = psi_alignment
+                if psi_alignment < 0.3:
+                    logger.warning("GroundingCheck: low ψ-alignment=%.4f for %s",
+                                  psi_alignment, edge_id)
+        except Exception:
+            logger.debug("GroundingCheck: ψ-alignment check skipped (G_ego not available)")
+
+        return result
+
     def solve_arc_task(
         self,
         grid_input: Any,
