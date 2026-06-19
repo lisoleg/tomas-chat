@@ -262,6 +262,7 @@ export default function AEGISPanel() {
                   ))}
                 </div>
               </div>
+            )}
             {/* AFS (EML-Lite KB) 状态 */}
             <div className="bg-white/5 rounded-lg p-3">
               <h3 className="text-[10px] text-textSecondary uppercase tracking-wider mb-2">AFS (EML-Lite KB) 状态</h3>
