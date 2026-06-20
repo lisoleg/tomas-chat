@@ -1,0 +1,244 @@
+%% TOMAS v2.0 类间关系图 — 类图
+%% 包含所有新建核心类及与现有模块的关系
+
+classDiagram
+    class HNCParserWrapper {
+        +Dict concept_base_table
+        +Dict sentence_templates
+        +parse(text: str) HNCParseResult
+        +encode_concept(word: str) str
+        +match_template(concept_codes: List~str~) str
+    }
+
+    class HNCParseResult {
+        +str template_id
+        +List~str~ chunks
+        +List~str~ concept_codes
+        +Dict cited_rule
+    }
+
+    class TOMASNLU_Pipeline {
+        +HNCParserWrapper hnc_parser
+        +EMLInjector eml_injector
+        +G_egoEngine g_ego
+        +KSnapOperator ksnap
+        +DeadZeroChecker dead_zero
+        +ContradictionDetector contradiction
+        +process(text: str) NLUPipelineResult
+        -_inject_to_eml(result: HNCParseResult) Dict
+        -_check_psi_anchor(edge: Any) Dict
+        -_write_ksnap(edge: Any) SnapEvent
+        -_compute_initial_i(result: HNCParseResult) float
+    }
+
+    class NLUPipelineResult {
+        +str template_id
+        +List~str~ chunks
+        +List~str~ concept_codes
+        +Dict cited_rule
+        +float i_value
+        +str psi_alignment_status
+        +SnapEvent snap_event
+    }
+
+    class TOMASGodelAgent {
+        +G_egoEngine g_ego
+        +KSnapOperator ksnap
+        +DeadZeroChecker dead_zero
+        +AEGISEngine aegis
+        +Set h_hard_symbols
+        +self_improve_loop(observation: str) GodelImproveResult
+        -_pg_imprison_check(new_code: str) bool
+        -_evaluate_i(new_code: str, test_cases: List) float
+        -_mus_dual_store(old_code: str, new_code: str) MUSResult
+        -_record_code_evolution(new_code: str, trigger_obs: str) SnapEvent
+        -_hot_swap(new_code: str, sandbox_result: Dict) bool
+    }
+
+    class GodelImproveResult {
+        +bool accepted
+        +float i_before
+        +float i_after
+        +str rejection_reason
+        +SnapEvent code_evolution_snap
+    }
+
+    class VectorClock {
+        +Dict~str, int~ clock
+        +str node_id
+        +tick() void
+        +send() Dict~str, int~
+        +receive(remote_vc: Dict) void
+        +happened_before(other: VectorClock) bool
+        +merge(other: VectorClock) VectorClock
+        +concurrent_with(other: VectorClock) bool
+    }
+
+    class AgentWebRuntime {
+        +VectorClock vc
+        +KSnapOperator ksnap
+        +G_egoEngine g_ego
+        +CausalDeliveryBuffer delivery_buffer
+        +str node_id
+        +send_message(target: str, content: Dict) str
+        +receive_message(msg: AgentWebMessage) Dict
+        +check_causal_predecessors(msg: AgentWebMessage) bool
+        -_log_to_ksnap(msg: AgentWebMessage) SnapEvent
+    }
+
+    class AgentWebMessage {
+        +str msg_id
+        +str source_node
+        +str target_node
+        +Dict~str, int~ vector_clock
+        +str snap_ref
+        +Dict content
+        +float timestamp
+    }
+
+    class MinaTOMASSnap {
+        +str mina_rpc_url
+        +MinaSnapProof wrap_snap(snap_event: SnapEvent) MinaSnapProof
+        +verify_proof(proof: MinaSnapProof) bool
+        +batch_prove(events: List~SnapEvent~) str
+        -_call_mina_node(payload: Dict) Dict
+    }
+
+    class MinaSnapProof {
+        +str snap_id
+        +bytes proof_data
+        +str proof_hash
+        +int proof_size_bytes
+        +float generation_time
+    }
+
+    class CeloBridge {
+        +str celo_rpc_url
+        +str contract_address
+        +process_payment(from_addr: str, to_addr: str, amount: float, currency: str) str
+        +aggregate_signatures(sigs: List~bytes~) bytes
+        +verify_payment(tx_hash: str) Dict
+    }
+
+    class TOMASCausalWorldModel {
+        +AetherBridge aether_bridge
+        +HodgeICoupling hodge
+        +EMLHypergraph eml_graph
+        +learn_from_data(data: Dict) Dict
+        +predict_next_state(current_state: Dict, action: Dict) Dict
+        +counterfactual(state: Dict, intervention: Dict) Dict
+        -_check_h_hard(prediction: Dict) bool
+    }
+
+    class AetherBridge {
+        +networkx.DiGraph scm_graph
+        +import_scm(scm_data: Dict) void
+        +extract_physical_relations() List~Dict~
+        +encode_causal_edges() List~HyperEdge~
+        +get_confounders(var_x: str, var_y: str) List~str~
+    }
+
+    class FediverseBridge {
+        +str instance_url
+        +VectorClock local_vc
+        +send_activity(activity: Dict, target: str) str
+        +receive_activity(activity: Dict) Dict
+        +extend_activitypub(msg: Dict, vc: Dict, snap_ref: str) Dict
+        -_validate_jsonld(activity: Dict) bool
+    }
+
+    class CausalDeliveryBuffer {
+        +Dict~str, AgentWebMessage~ pending
+        +Dict~str, int~ delivered_vc
+        +deliver(msg: AgentWebMessage) List~AgentWebMessage~
+        +check_ready(msg: AgentWebMessage) bool
+        +flush() List~AgentWebMessage~
+    }
+
+    class EMLEHNN {
+        +EquivariantLinearLayer equiv_layer
+        +MUSAwarePooling mus_pooling
+        +float kappa_snap_loss_weight
+        +forward(hypergraph: EMLHypergraph) torch.Tensor
+        +compute_kappa_snap_consistency(predictions: List, snaps: List~SnapEvent~) float
+        +train_step(batch: Dict) Dict
+    }
+
+    class EquivariantLinearLayer {
+        +int input_dim
+        +int output_dim
+        +int k_order
+        +forward(x: torch.Tensor, adjacency: torch.Tensor) torch.Tensor
+        +compute_weight(i_set: frozenset, j_set: frozenset) float
+        +test_equivariance() bool
+    }
+
+    class MUSAwarePooling {
+        +Dict mus_tags
+        +forward(features: torch.Tensor, mus_mask: torch.Tensor) torch.Tensor
+    }
+
+    %% 现有模块（接口约定）
+    class G_egoEngine {
+        <<existing>>
+        +compute_psi_alignment(edge) Dict
+        +self_inspect_psi_anchor() Dict
+        +aligned_with_purpose(query) Dict
+    }
+
+    class KSnapOperator {
+        <<existing>>
+        +execute(candidate, obs_base) SnapEvent
+        +batch_merkle_root(events) str
+    }
+
+    class EMLInjector {
+        <<existing>>
+        +build_context_block(concepts, edges) str
+        +map_hnc_to_eml_schema(template_id) Dict
+    }
+
+    class HodgeICoupling {
+        <<existing>>
+        +check_physical_conservation(prediction) bool
+    }
+
+    class DeadZeroChecker {
+        <<existing>>
+        +check_dead_zero(i_value) tuple
+    }
+
+    %% 关系
+    HNCParserWrapper --> HNCParseResult
+    TOMASNLU_Pipeline --> HNCParserWrapper
+    TOMASNLU_Pipeline --> HNCParseResult
+    TOMASNLU_Pipeline --> NLUPipelineResult
+    TOMASNLU_Pipeline ..> G_egoEngine : uses
+    TOMASNLU_Pipeline ..> KSnapOperator : uses
+    TOMASNLU_Pipeline ..> EMLInjector : uses
+    TOMASNLU_Pipeline ..> DeadZeroChecker : uses
+
+    TOMASGodelAgent --> GodelImproveResult
+    TOMASGodelAgent ..> G_egoEngine : uses
+    TOMASGodelAgent ..> KSnapOperator : uses
+    TOMASGodelAgent ..> DeadZeroChecker : uses
+
+    AgentWebRuntime --> VectorClock
+    AgentWebRuntime --> AgentWebMessage
+    AgentWebRuntime --> CausalDeliveryBuffer
+    AgentWebRuntime ..> KSnapOperator : uses
+    AgentWebRuntime ..> G_egoEngine : uses
+
+    CausalDeliveryBuffer --> AgentWebMessage
+
+    MinaTOMASSnap --> MinaSnapProof
+    MinaTOMASSnap ..> KSnapOperator : reads SnapEvent
+
+    FediverseBridge --> VectorClock
+
+    TOMASCausalWorldModel --> AetherBridge
+    TOMASCausalWorldModel ..> HodgeICoupling : uses
+
+    EMLEHNN --> EquivariantLinearLayer
+    EMLEHNN --> MUSAwarePooling
+    EMLEHNN ..> KSnapOperator : reads SnapEvent

@@ -122,11 +122,14 @@ class HodgeICoupling:
     """
 
     def __init__(self, wsc: WeightedSimplicialComplex, lambda_i: float = 1.0,
-                 epsilon: float = 1e-6, theta_dead: float = 0.15):
+                 epsilon: float = 1e-6, theta_dead: float = 0.15,
+                 conservation_tolerance: float = 1e-4):
         self.wsc = wsc
         self.lambda_i = lambda_i   # ℐ-耦合强度
         self.epsilon = epsilon     # 除零保护
         self.theta_dead = theta_dead
+        # H_hard 硬锚：物理守恒律验证容差 (T05)
+        self.conservation_tolerance = conservation_tolerance
 
     def coboundary_matrix(self, dim: int) -> List[List[float]]:
         """加权上边界算子 δ_w^n
@@ -246,6 +249,91 @@ class HodgeICoupling:
                 logger.info(f"[死零截断] REJECT {spx.id}: I={spx.i_weight:.4f} < θ={self.theta_dead}")
 
         return rejected
+
+    def check_physical_conservation(self, prediction: Dict) -> Dict:
+        """H_hard 硬锚检查：物理守恒律验证 (T05)
+
+        检查项:
+            - 能量守恒: ΔE_total ≈ 0 (energy_in - energy_out 的绝对值 < tolerance)
+            - 动量守恒: Δp_total ≈ 0
+            - 角动量守恒: ΔL_total ≈ 0
+
+        Args:
+            prediction: 预测状态字典，包含 energy_before, energy_after,
+                        momentum_before, momentum_after,
+                        angular_momentum_before, angular_momentum_after
+
+        Returns:
+            {
+                "passed": bool,           # 是否通过所有守恒律检查
+                "violations": List[str],  # 违反的守恒律列表
+                "details": Dict,          # 每项检查的详细数据
+            }
+        """
+        tolerance = self.conservation_tolerance
+        violations: List[str] = []
+        details: Dict[str, Any] = {}
+
+        # ── 能量守恒检查 ──
+        energy_before = prediction.get("energy_before", 0.0)
+        energy_after = prediction.get("energy_after", 0.0)
+        delta_e = abs(energy_after - energy_before)
+        energy_passed = delta_e < tolerance
+        details["energy"] = {
+            "before": energy_before,
+            "after": energy_after,
+            "delta": delta_e,
+            "tolerance": tolerance,
+            "passed": energy_passed,
+        }
+        if not energy_passed:
+            violations.append("energy_conservation")
+
+        # ── 动量守恒检查 ──
+        momentum_before = prediction.get("momentum_before", 0.0)
+        momentum_after = prediction.get("momentum_after", 0.0)
+        delta_p = abs(momentum_after - momentum_before)
+        momentum_passed = delta_p < tolerance
+        details["momentum"] = {
+            "before": momentum_before,
+            "after": momentum_after,
+            "delta": delta_p,
+            "tolerance": tolerance,
+            "passed": momentum_passed,
+        }
+        if not momentum_passed:
+            violations.append("momentum_conservation")
+
+        # ── 角动量守恒检查 ──
+        ang_mom_before = prediction.get("angular_momentum_before", 0.0)
+        ang_mom_after = prediction.get("angular_momentum_after", 0.0)
+        delta_l = abs(ang_mom_after - ang_mom_before)
+        ang_mom_passed = delta_l < tolerance
+        details["angular_momentum"] = {
+            "before": ang_mom_before,
+            "after": ang_mom_after,
+            "delta": delta_l,
+            "tolerance": tolerance,
+            "passed": ang_mom_passed,
+        }
+        if not ang_mom_passed:
+            violations.append("angular_momentum_conservation")
+
+        all_passed = len(violations) == 0
+
+        if not all_passed:
+            logger.warning(
+                "[H_hard] 物理守恒律违反: %s (tolerance=%e)",
+                violations, tolerance,
+            )
+        else:
+            logger.debug("[H_hard] 物理守恒律检查通过 (tolerance=%e)", tolerance)
+
+        return {
+            "passed": all_passed,
+            "violations": violations,
+            "details": details,
+        }
 
     def compute_spectrum(self, dim: int) -> HodgeSpectrum:
         """计算 TOMAS-WSC 融合算子的谱
@@ -483,3 +571,150 @@ __all__ = [
     "HodgeICoupling",
     "TopologicalSignalEvolution",
 ]
+
+
+# ============================================================
+# Self-Test (T05: check_physical_conservation)
+# ============================================================
+
+if __name__ == "__main__":
+    print("=" * 64)
+    print("  HodgeICoupling.check_physical_conservation — Self-Test")
+    print("=" * 64)
+
+    # 创建基础 WSC 和耦合算子
+    wsc = WeightedSimplicialComplex(max_dim=2)
+    wsc.add_simplex(["A", "B"], i_weight=0.8)
+    wsc.add_simplex(["B", "C"], i_weight=0.6)
+    coupling = HodgeICoupling(wsc, conservation_tolerance=1e-4)
+
+    # ── 测试 1: 所有守恒律通过 ──
+    print("\n[1] Testing all conservation laws pass...")
+    good_prediction = {
+        "energy_before": 100.0,
+        "energy_after": 100.0,
+        "momentum_before": 5.0,
+        "momentum_after": 5.0,
+        "angular_momentum_before": 3.0,
+        "angular_momentum_after": 3.0,
+    }
+    result = coupling.check_physical_conservation(good_prediction)
+    assert result["passed"] is True, f"Expected pass, got violations: {result['violations']}"
+    assert len(result["violations"]) == 0
+    assert "energy" in result["details"]
+    assert "momentum" in result["details"]
+    assert "angular_momentum" in result["details"]
+    print(f"  [PASS] All conservation laws passed (violations={result['violations']})")
+
+    # ── 测试 2: 能量守恒违反 ──
+    print("\n[2] Testing energy conservation violation...")
+    bad_energy = {
+        "energy_before": 100.0,
+        "energy_after": 95.0,  # ΔE = 5.0 >> tolerance
+        "momentum_before": 5.0,
+        "momentum_after": 5.0,
+        "angular_momentum_before": 3.0,
+        "angular_momentum_after": 3.0,
+    }
+    result2 = coupling.check_physical_conservation(bad_energy)
+    assert result2["passed"] is False, "Energy violation should fail"
+    assert "energy_conservation" in result2["violations"]
+    assert abs(result2["details"]["energy"]["delta"] - 5.0) < 1e-10
+    print(f"  [PASS] Energy violation detected: violations={result2['violations']}")
+
+    # ── 测试 3: 动量守恒违反 ──
+    print("\n[3] Testing momentum conservation violation...")
+    bad_momentum = {
+        "energy_before": 50.0,
+        "energy_after": 50.0,
+        "momentum_before": 10.0,
+        "momentum_after": 10.001,  # Δp = 0.001 > tolerance (1e-4)
+        "angular_momentum_before": 2.0,
+        "angular_momentum_after": 2.0,
+    }
+    result3 = coupling.check_physical_conservation(bad_momentum)
+    assert result3["passed"] is False, "Momentum violation should fail"
+    assert "momentum_conservation" in result3["violations"]
+    print(f"  [PASS] Momentum violation detected: violations={result3['violations']}")
+
+    # ── 测试 4: 角动量守恒违反 ──
+    print("\n[4] Testing angular momentum conservation violation...")
+    bad_ang = {
+        "energy_before": 50.0,
+        "energy_after": 50.0,
+        "momentum_before": 10.0,
+        "momentum_after": 10.0,
+        "angular_momentum_before": 7.0,
+        "angular_momentum_after": 7.5,  # ΔL = 0.5 >> tolerance
+    }
+    result4 = coupling.check_physical_conservation(bad_ang)
+    assert result4["passed"] is False, "Angular momentum violation should fail"
+    assert "angular_momentum_conservation" in result4["violations"]
+    print(f"  [PASS] Angular momentum violation detected: violations={result4['violations']}")
+
+    # ── 测试 5: 多项违反 ──
+    print("\n[5] Testing multiple conservation violations...")
+    bad_multi = {
+        "energy_before": 100.0,
+        "energy_after": 80.0,
+        "momentum_before": 5.0,
+        "momentum_after": 8.0,
+        "angular_momentum_before": 3.0,
+        "angular_momentum_after": 3.0,
+    }
+    result5 = coupling.check_physical_conservation(bad_multi)
+    assert result5["passed"] is False
+    assert len(result5["violations"]) == 2, f"Expected 2 violations, got {len(result5['violations'])}"
+    assert "energy_conservation" in result5["violations"]
+    assert "momentum_conservation" in result5["violations"]
+    print(f"  [PASS] Multiple violations detected: {result5['violations']}")
+
+    # ── 测试 6: 自定义 tolerance ──
+    print("\n[6] Testing custom conservation_tolerance...")
+    coupling_loose = HodgeICoupling(wsc, conservation_tolerance=1.0)
+    loose_pred = {
+        "energy_before": 100.0,
+        "energy_after": 100.5,  # ΔE = 0.5 < tolerance=1.0
+        "momentum_before": 5.0,
+        "momentum_after": 5.0,
+        "angular_momentum_before": 3.0,
+        "angular_momentum_after": 3.0,
+    }
+    result6 = coupling_loose.check_physical_conservation(loose_pred)
+    assert result6["passed"] is True, "Should pass with loose tolerance"
+    print(f"  [PASS] Loose tolerance (1.0) allows ΔE=0.5: passed={result6['passed']}")
+
+    # ── 测试 7: 边界情况 — 恰好等于 tolerance ──
+    print("\n[7] Testing boundary case (delta == tolerance)...")
+    tol = 0.5  # 使用无浮点误差的 tolerance
+    coupling_exact = HodgeICoupling(wsc, conservation_tolerance=tol)
+    boundary_pred = {
+        "energy_before": 0.0,
+        "energy_after": 0.5,  # ΔE == tolerance (should fail, < not <=)
+        "momentum_before": 0.0,
+        "momentum_after": 0.0,
+        "angular_momentum_before": 0.0,
+        "angular_momentum_after": 0.0,
+    }
+    result7 = coupling_exact.check_physical_conservation(boundary_pred)
+    # delta == tolerance, condition is delta < tolerance → should fail
+    assert result7["passed"] is False, "delta == tolerance should fail (< not <=)"
+    print(f"  [PASS] Boundary case: delta==tolerance fails (uses < not <=)")
+
+    # ── 测试 8: 缺失字段默认为 0.0 ──
+    print("\n[8] Testing missing fields default to 0.0...")
+    partial_pred = {
+        "energy_before": 0.0,
+        "energy_after": 0.0,
+        # momentum and angular_momentum 缺失
+    }
+    result8 = coupling.check_physical_conservation(partial_pred)
+    assert result8["passed"] is True, "Missing fields default to 0.0, should pass"
+    assert result8["details"]["momentum"]["before"] == 0.0
+    assert result8["details"]["angular_momentum"]["after"] == 0.0
+    print(f"  [PASS] Missing fields default to 0.0: passed={result8['passed']}")
+
+    print("\n" + "=" * 64)
+    print("  HodgeICoupling.check_physical_conservation — All 8 Tests Passed")
+    print("=" * 64)
+

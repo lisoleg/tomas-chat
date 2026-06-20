@@ -10,6 +10,9 @@ import json
 import time
 from datetime import datetime
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -2609,6 +2612,706 @@ def api_hg_export_eml_v2():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ============================================================
+# TOMAS v2.0 API 端点 — 13 个新模块集成 (T16)
+# 统一响应格式: {success: bool, data: Any, error: str}
+# 可选导入模式: 模块不可用时返回 503 {success: false, error: "module not available"}
+# ============================================================
+
+_v2_modules = {}
+
+
+# ---- v2.0 模块懒加载单例工厂 ----
+
+def _v2_get_nlu():
+    """HNC NLU 管道单例。"""
+    if "nlu" not in _v2_modules:
+        try:
+            from tomas_nlu_pipeline import TOMASNLU_Pipeline
+            _v2_modules["nlu"] = TOMASNLU_Pipeline(use_jieba=True)
+        except Exception as e:
+            logger.warning(f"v2 NLU init failed: {e}")
+            _v2_modules["nlu"] = None
+    return _v2_modules["nlu"]
+
+
+def _v2_get_godel():
+    """哥德尔智能体单例。"""
+    if "godel" not in _v2_modules:
+        try:
+            from goedel_agent_tomas import TOMASGodelAgent
+            _v2_modules["godel"] = TOMASGodelAgent(None, None, None, None, None)
+        except Exception as e:
+            logger.warning(f"v2 Gödel init failed: {e}")
+            _v2_modules["godel"] = None
+    return _v2_modules["godel"]
+
+
+def _v2_get_vector_clock():
+    """向量时钟单例。"""
+    if "vc" not in _v2_modules:
+        try:
+            from vector_clock import VectorClock
+            _v2_modules["vc"] = VectorClock("api_node", ["api_node", "peer_1", "peer_2"])
+        except Exception as e:
+            logger.warning(f"v2 VectorClock init failed: {e}")
+            _v2_modules["vc"] = None
+    return _v2_modules["vc"]
+
+
+def _v2_get_causal_buffer():
+    """因果交付缓冲单例。"""
+    if "causal_buf" not in _v2_modules:
+        try:
+            from causal_delivery import CausalDeliveryBuffer
+            vc = _v2_get_vector_clock()
+            if vc is None:
+                _v2_modules["causal_buf"] = None
+            else:
+                _v2_modules["causal_buf"] = CausalDeliveryBuffer(vc)
+        except Exception as e:
+            logger.warning(f"v2 CausalDelivery init failed: {e}")
+            _v2_modules["causal_buf"] = None
+    return _v2_modules["causal_buf"]
+
+
+def _v2_get_agentweb():
+    """AgentWeb 运行时单例。"""
+    if "agentweb" not in _v2_modules:
+        try:
+            from agentweb_runtime import AgentWebRuntime
+            buf = _v2_get_causal_buffer()
+            if buf is None:
+                _v2_modules["agentweb"] = None
+            else:
+                _v2_modules["agentweb"] = AgentWebRuntime(
+                    "api_node", ["api_node", "peer_1", "peer_2"],
+                    None, None, buf,
+                )
+        except Exception as e:
+            logger.warning(f"v2 AgentWeb init failed: {e}")
+            _v2_modules["agentweb"] = None
+    return _v2_modules["agentweb"]
+
+
+def _v2_get_fediverse():
+    """Fediverse 桥接单例。"""
+    if "fediverse" not in _v2_modules:
+        try:
+            from fediverse_bridge import FediverseBridge
+            vc = _v2_get_vector_clock()
+            if vc is None:
+                _v2_modules["fediverse"] = None
+            else:
+                _v2_modules["fediverse"] = FediverseBridge("http://localhost:8080", vc)
+        except Exception as e:
+            logger.warning(f"v2 Fediverse init failed: {e}")
+            _v2_modules["fediverse"] = None
+    return _v2_modules["fediverse"]
+
+
+def _v2_get_mina():
+    """Mina SNARK 桥接单例。"""
+    if "mina" not in _v2_modules:
+        try:
+            from mina_kappa_bridge import MinaTOMASSnap
+            _v2_modules["mina"] = MinaTOMASSnap("http://localhost:3085", "mina")
+        except Exception as e:
+            logger.warning(f"v2 Mina init failed: {e}")
+            _v2_modules["mina"] = None
+    return _v2_modules["mina"]
+
+
+def _v2_get_celo():
+    """Celo 支付桥接单例。"""
+    if "celo" not in _v2_modules:
+        try:
+            from celo_bridge import CeloBridge
+            _v2_modules["celo"] = CeloBridge("https://forno.celo.org", "", "")
+        except Exception as e:
+            logger.warning(f"v2 Celo init failed: {e}")
+            _v2_modules["celo"] = None
+    return _v2_modules["celo"]
+
+
+def _v2_get_aether():
+    """Aether SCM 桥接单例。"""
+    if "aether" not in _v2_modules:
+        try:
+            from aether_bridge import AetherSCMBridge
+            _v2_modules["aether"] = AetherSCMBridge()
+        except Exception as e:
+            logger.warning(f"v2 Aether init failed: {e}")
+            _v2_modules["aether"] = None
+    return _v2_modules["aether"]
+
+
+def _v2_get_world_model():
+    """因果世界模型单例。"""
+    if "world_model" not in _v2_modules:
+        try:
+            from causal_world_model_tomas import TOMASCausalWorldModel
+            aether = _v2_get_aether()
+            if aether is None:
+                _v2_modules["world_model"] = None
+            else:
+                _v2_modules["world_model"] = TOMASCausalWorldModel(aether, None, None)
+        except Exception as e:
+            logger.warning(f"v2 WorldModel init failed: {e}")
+            _v2_modules["world_model"] = None
+    return _v2_modules["world_model"]
+
+
+def _v2_get_ehnn():
+    """EHNN 等变超图神经网络单例。"""
+    if "ehnn" not in _v2_modules:
+        try:
+            from eml_ehnn import EMLEHNN
+            _v2_modules["ehnn"] = EMLEHNN()
+        except Exception as e:
+            logger.warning(f"v2 EHNN init failed: {e}")
+            _v2_modules["ehnn"] = None
+    return _v2_modules["ehnn"]
+
+
+# ============================================================
+# ── 1. HNC NLU Pipeline ────────────────────────────────────
+# ============================================================
+
+@app.route("/api/v2/nlu/parse", methods=["POST"])
+def v2_nlu_parse():
+    """HNC NLU 管道 — 文本解析（7 步管道：HNC 编码 → 模板匹配 → ℐ 估值 → ψ 对齐 → κ-Snap → GPCT 检测）"""
+    try:
+        pipeline = _v2_get_nlu()
+        if pipeline is None:
+            return jsonify({"success": False, "error": "NLU module not available"}), 503
+        data = request.json or {}
+        text = data.get("text", "")
+        if not text:
+            return jsonify({"success": False, "error": "text is required"}), 400
+        result = pipeline.process(text)
+        return jsonify({"success": True, "data": {
+            "template_id": result.template_id,
+            "chunks": result.chunks,
+            "concept_codes": result.concept_codes,
+            "cited_rule": result.cited_rule,
+            "i_value": result.i_value,
+            "psi_alignment_status": result.psi_alignment_status,
+            "snap_id": result.snap_id,
+            "gpct_emergence_detected": result.gpct_emergence_detected,
+            "gpct_new_dim": result.gpct_new_dim,
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/nlu/stats", methods=["GET"])
+def v2_nlu_stats():
+    """HNC NLU 管道 — 统计信息"""
+    try:
+        pipeline = _v2_get_nlu()
+        if pipeline is None:
+            return jsonify({"success": False, "error": "NLU module not available"}), 503
+        stats = pipeline.get_stats()
+        return jsonify({"success": True, "data": stats})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 2. Gödel Agent (哥德尔智能体) ──────────────────────────
+# ============================================================
+
+@app.route("/api/v2/godel/improve", methods=["POST"])
+def v2_godel_improve():
+    """哥德尔智能体 — 自改进循环（四重封边：哥德尔边界 → 图灵边界 → 悖论边界 → ℐ 存在边界）"""
+    try:
+        agent = _v2_get_godel()
+        if agent is None:
+            return jsonify({"success": False, "error": "Gödel agent module not available"}), 503
+        data = request.json or {}
+        observation = data.get("observation", "")
+        result = agent.self_improve_loop(observation)
+        return jsonify({"success": True, "data": result.to_dict()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/godel/status", methods=["GET"])
+def v2_godel_status():
+    """哥德尔智能体 — 状态（H_HARD 符号集 / 当前 ℐ 值 / MUS 双存库）"""
+    try:
+        agent = _v2_get_godel()
+        if agent is None:
+            return jsonify({"success": False, "error": "Gödel agent module not available"}), 503
+        h_hard = agent.get_h_hard_symbols()
+        # H_HARD_SYMBOLS 可能是 set/frozenset，需转为 list 以便 JSON 序列化
+        if isinstance(h_hard, (set, frozenset)):
+            h_hard = sorted(list(h_hard)) if all(isinstance(s, str) for s in h_hard) else [str(s) for s in h_hard]
+        return jsonify({"success": True, "data": {
+            "h_hard_symbols": h_hard,
+            "current_i": agent.get_current_i(),
+            "mus_store": agent.get_mus_store(),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/godel/mus/resolve", methods=["POST"])
+def v2_godel_mus_resolve():
+    """哥德尔智能体 — 裁决 MUS 双存条目"""
+    try:
+        agent = _v2_get_godel()
+        if agent is None:
+            return jsonify({"success": False, "error": "Gödel agent module not available"}), 503
+        data = request.json or {}
+        tag = data.get("tag", "")
+        prefer_new = data.get("prefer_new", True)
+        result = agent.resolve_mus(tag, prefer_new)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 3. Vector Clock (向量时钟) ─────────────────────────────
+# ============================================================
+
+@app.route("/api/v2/vector-clock/tick", methods=["POST"])
+def v2_vc_tick():
+    """向量时钟 — 本地 tick（自增逻辑时钟）"""
+    try:
+        vc = _v2_get_vector_clock()
+        if vc is None:
+            return jsonify({"success": False, "error": "VectorClock module not available"}), 503
+        vc.tick()
+        return jsonify({"success": True, "data": vc.to_dict()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/vector-clock/compare", methods=["POST"])
+def v2_vc_compare():
+    """向量时钟 — 比较两个时钟（happened_before / concurrent 判定）"""
+    try:
+        vc = _v2_get_vector_clock()
+        if vc is None:
+            return jsonify({"success": False, "error": "VectorClock module not available"}), 503
+        data = request.json or {}
+        other_vc_dict = data.get("other", {})
+        if not other_vc_dict:
+            return jsonify({"success": False, "error": "other vector clock is required"}), 400
+        from vector_clock import VectorClock
+        all_nodes = sorted(set(list(other_vc_dict.keys()) + ["api_node", "peer_1", "peer_2", "other"]))
+        other_vc = VectorClock("other", all_nodes)
+        other_vc.receive(other_vc_dict)
+        return jsonify({"success": True, "data": {
+            "happened_before": vc.happened_before(other_vc),
+            "concurrent": vc.concurrent_with(other_vc),
+            "self": vc.to_dict(),
+            "other": other_vc.to_dict(),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 4. Causal Delivery (因果交付缓冲) ──────────────────────
+# ============================================================
+
+@app.route("/api/v2/causal-delivery/deliver", methods=["POST"])
+def v2_cd_deliver():
+    """因果交付缓冲 — 投递消息（自动检查因果顺序，就绪则交付，否则缓冲）"""
+    try:
+        buf = _v2_get_causal_buffer()
+        if buf is None:
+            return jsonify({"success": False, "error": "CausalDelivery module not available"}), 503
+        data = request.json or {}
+        from causal_delivery import AgentWebMessage
+        msg = AgentWebMessage(
+            msg_id=data.get("msg_id", str(uuid.uuid4())),
+            source_node=data.get("source_node", "unknown"),
+            target_node=data.get("target_node", "api_node"),
+            vector_clock=data.get("vector_clock", {}),
+            snap_ref=data.get("snap_ref", ""),
+            content=data.get("content", ""),
+            timestamp=data.get("timestamp", time.time()),
+        )
+        delivered = buf.deliver(msg)
+        return jsonify({"success": True, "data": {
+            "delivered_count": len(delivered),
+            "delivered_msgs": [
+                {"msg_id": m.msg_id, "source": m.source_node, "target": m.target_node}
+                for m in delivered
+            ],
+            "pending": buf.pending_count(),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/causal-delivery/pending", methods=["GET"])
+def v2_cd_pending():
+    """因果交付缓冲 — 待处理消息数"""
+    try:
+        buf = _v2_get_causal_buffer()
+        if buf is None:
+            return jsonify({"success": False, "error": "CausalDelivery module not available"}), 503
+        return jsonify({"success": True, "data": {
+            "pending_count": buf.pending_count(),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 5. AgentWeb Runtime (AgentWeb 节点运行时) ─────────────
+# ============================================================
+
+@app.route("/api/v2/agentweb/send", methods=["POST"])
+def v2_aw_send():
+    """AgentWeb 运行时 — 发送消息（附带向量时钟 + κ-Snap 引用）"""
+    try:
+        rt = _v2_get_agentweb()
+        if rt is None:
+            return jsonify({"success": False, "error": "AgentWeb module not available"}), 503
+        data = request.json or {}
+        target = data.get("target_node", "peer_1")
+        content = data.get("content", "")
+        msg_id = rt.send_message(target, content)
+        return jsonify({"success": True, "data": {"msg_id": msg_id, "target": target}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/agentweb/receive", methods=["POST"])
+def v2_aw_receive():
+    """AgentWeb 运行时 — 接收消息（因果交付 + 缓冲管理）"""
+    try:
+        rt = _v2_get_agentweb()
+        if rt is None:
+            return jsonify({"success": False, "error": "AgentWeb module not available"}), 503
+        data = request.json or {}
+        from causal_delivery import AgentWebMessage
+        msg = AgentWebMessage(
+            msg_id=data.get("msg_id", str(uuid.uuid4())),
+            source_node=data.get("source_node", "unknown"),
+            target_node=data.get("target_node", "api_node"),
+            vector_clock=data.get("vector_clock", {}),
+            snap_ref=data.get("snap_ref", ""),
+            content=data.get("content", ""),
+            timestamp=data.get("timestamp", time.time()),
+        )
+        result = rt.receive_message(msg)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/agentweb/status", methods=["GET"])
+def v2_aw_status():
+    """AgentWeb 运行时 — 节点状态"""
+    try:
+        rt = _v2_get_agentweb()
+        if rt is None:
+            return jsonify({"success": False, "error": "AgentWeb module not available"}), 503
+        return jsonify({"success": True, "data": rt.get_status()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 6. Fediverse Bridge (ActivityPub 扩展桥接) ────────────
+# ============================================================
+
+@app.route("/api/v2/fediverse/send", methods=["POST"])
+def v2_fedi_send():
+    """Fediverse 桥接 — 发送 ActivityPub 活动（扩展向量时钟 + κ-Snap 引用）"""
+    try:
+        bridge = _v2_get_fediverse()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Fediverse module not available"}), 503
+        data = request.json or {}
+        activity = data.get("activity", {})
+        target = data.get("target", "")
+        activity_id = bridge.send_activity(activity, target)
+        return jsonify({"success": True, "data": {"activity_id": activity_id}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/fediverse/receive", methods=["POST"])
+def v2_fedi_receive():
+    """Fediverse 桥接 — 接收 ActivityPub 活动（验证向量时钟 + 因果一致性）"""
+    try:
+        bridge = _v2_get_fediverse()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Fediverse module not available"}), 503
+        data = request.json or {}
+        activity = data.get("activity", {})
+        result = bridge.receive_activity(activity)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/fediverse/stats", methods=["GET"])
+def v2_fedi_stats():
+    """Fediverse 桥接 — 统计信息"""
+    try:
+        bridge = _v2_get_fediverse()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Fediverse module not available"}), 503
+        return jsonify({"success": True, "data": bridge.stats()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 7. Mina SNARK Bridge (递归 SNARK 证明) ────────────────
+# ============================================================
+
+@app.route("/api/v2/mina/wrap-snap", methods=["POST"])
+def v2_mina_wrap():
+    """Mina SNARK 桥接 — 将 κ-Snap 事件包装为递归 SNARK 证明"""
+    try:
+        bridge = _v2_get_mina()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Mina module not available"}), 503
+        data = request.json or {}
+        snap_event = data.get("snap_event", {})
+        proof = bridge.wrap_snap(snap_event)
+        return jsonify({"success": True, "data": proof.to_dict()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/mina/verify", methods=["POST"])
+def v2_mina_verify():
+    """Mina SNARK 桥接 — 验证 SNARK 证明"""
+    try:
+        bridge = _v2_get_mina()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Mina module not available"}), 503
+        data = request.json or {}
+        from mina_kappa_bridge import MinaSnapProof
+        proof = MinaSnapProof(
+            snap_id=data.get("snap_id", ""),
+            proof_data=data.get("proof_data", ""),
+            proof_hash=data.get("proof_hash", ""),
+            proof_size_bytes=data.get("proof_size_bytes", 0),
+            generation_time=data.get("generation_time", 0.0),
+            is_degraded=data.get("is_degraded", False),
+        )
+        verified = bridge.verify_proof(proof)
+        return jsonify({"success": True, "data": {"verified": verified}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/mina/stats", methods=["GET"])
+def v2_mina_stats():
+    """Mina SNARK 桥接 — 统计信息"""
+    try:
+        bridge = _v2_get_mina()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Mina module not available"}), 503
+        return jsonify({"success": True, "data": bridge.stats()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 8. Celo Bridge (稳定币支付桥接) ───────────────────────
+# ============================================================
+
+@app.route("/api/v2/celo/pay", methods=["POST"])
+def v2_celo_pay():
+    """Celo 支付桥接 — 处理稳定币支付（cUSD / cEUR）"""
+    try:
+        bridge = _v2_get_celo()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Celo module not available"}), 503
+        data = request.json or {}
+        tx_hash = bridge.process_payment(
+            from_addr=data.get("from_addr", ""),
+            to_addr=data.get("to_addr", ""),
+            amount=float(data.get("amount", 0.0)),
+            currency=data.get("currency", "cUSD"),
+        )
+        return jsonify({"success": True, "data": {"tx_hash": tx_hash}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/celo/verify", methods=["POST"])
+def v2_celo_verify():
+    """Celo 支付桥接 — 验证支付交易"""
+    try:
+        bridge = _v2_get_celo()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Celo module not available"}), 503
+        data = request.json or {}
+        tx_hash = data.get("tx_hash", "")
+        if not tx_hash:
+            return jsonify({"success": False, "error": "tx_hash is required"}), 400
+        result = bridge.verify_payment(tx_hash)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/celo/balance", methods=["GET"])
+def v2_celo_balance():
+    """Celo 支付桥接 — 查询地址余额"""
+    try:
+        bridge = _v2_get_celo()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Celo module not available"}), 503
+        address = request.args.get("address", "")
+        currency = request.args.get("currency", "cUSD")
+        if not address:
+            return jsonify({"success": False, "error": "address is required"}), 400
+        balance = bridge.get_balance(address, currency)
+        return jsonify({"success": True, "data": {"balance": balance, "currency": currency}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 9. Causal World Model (因果世界模型) ──────────────────
+# ============================================================
+
+@app.route("/api/v2/world-model/learn", methods=["POST"])
+def v2_wm_learn():
+    """因果世界模型 — 从数据学习 SCM（Aether SCM → EML 超边 → Hodge 硬锚检查）"""
+    try:
+        model = _v2_get_world_model()
+        if model is None:
+            return jsonify({"success": False, "error": "WorldModel module not available"}), 503
+        data = request.json or {}
+        result = model.learn_from_data(data.get("data", {}))
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/world-model/predict", methods=["POST"])
+def v2_wm_predict():
+    """因果世界模型 — 预测下一状态（含 H_HARD 守恒律检查）"""
+    try:
+        model = _v2_get_world_model()
+        if model is None:
+            return jsonify({"success": False, "error": "WorldModel module not available"}), 503
+        data = request.json or {}
+        result = model.predict_next_state(
+            data.get("current_state", {}),
+            data.get("action", {}),
+        )
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/world-model/counterfactual", methods=["POST"])
+def v2_wm_counterfactual():
+    """因果世界模型 — 反事实推理（干预推理 + H_HARD 检查）"""
+    try:
+        model = _v2_get_world_model()
+        if model is None:
+            return jsonify({"success": False, "error": "WorldModel module not available"}), 503
+        data = request.json or {}
+        result = model.counterfactual(
+            data.get("state", {}),
+            data.get("intervention", {}),
+        )
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 10. Aether SCM Bridge (结构因果模型) ──────────────────
+# ============================================================
+
+@app.route("/api/v2/aether/scm/summary", methods=["GET"])
+def v2_aether_summary():
+    """Aether SCM — 图摘要（变量数 / 边数 / 硬锚数 / networkx 可用性）"""
+    try:
+        bridge = _v2_get_aether()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Aether module not available"}), 503
+        return jsonify({"success": True, "data": bridge.get_graph_summary()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/aether/scm/confounders", methods=["GET"])
+def v2_aether_confounders():
+    """Aether SCM — 混淆因子检测（X→A 且 X→B 但 A⟛B 的结构发现）"""
+    try:
+        bridge = _v2_get_aether()
+        if bridge is None:
+            return jsonify({"success": False, "error": "Aether module not available"}), 503
+        confounders = bridge.detect_confounders()
+        return jsonify({"success": True, "data": {
+            "confounders": confounders,
+            "count": len(confounders),
+        }})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ── 11. EHNN (等变超图神经网络) ───────────────────────────
+# ============================================================
+
+@app.route("/api/v2/ehnn/forward", methods=["POST"])
+def v2_ehnn_forward():
+    """EHNN — 前向传播（ℐ 加权 → 等变层 → MUS-Aware Pooling → κ-Snap 一致性损失）"""
+    try:
+        ehnn = _v2_get_ehnn()
+        if ehnn is None:
+            return jsonify({"success": False, "error": "EHNN module not available"}), 503
+        data = request.json or {}
+        from eml_ehnn import EMLHyperEdge
+        edges_data = data.get("edges", [])
+        edges = [
+            EMLHyperEdge(
+                edge_id=e.get("edge_id", f"edge_{i}"),
+                nodes=e.get("nodes", []),
+                i_value=float(e.get("i_value", 0.5)),
+                is_hard_anchor=e.get("is_hard_anchor", False),
+                mus_conflict_id=e.get("mus_conflict_id"),
+                features=e.get("features", []),
+            )
+            for i, e in enumerate(edges_data)
+        ]
+        result = ehnn.forward(edges)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v2/ehnn/expand-dim", methods=["POST"])
+def v2_ehnn_expand():
+    """EHNN — GPCT 动态输出维度扩展（范式转移时自动扩展）"""
+    try:
+        ehnn = _v2_get_ehnn()
+        if ehnn is None:
+            return jsonify({"success": False, "error": "EHNN module not available"}), 503
+        data = request.json or {}
+        new_dim = int(data.get("new_dim", 64))
+        ehnn.expand_output_dim(new_dim)
+        return jsonify({"success": True, "data": {"new_dim": new_dim}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# 启动入口
+# ============================================================
 
 if __name__ == "__main__":
     from models import get_engine

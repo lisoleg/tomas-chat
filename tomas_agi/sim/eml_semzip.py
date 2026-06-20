@@ -33,6 +33,17 @@ except ImportError:
     AEGISEngine = None
     VariantIsolationManager = None
 
+import logging
+
+# EHNN (Equivariant Hypergraph Neural Network) — T12 产出，T13 集成
+try:
+    from eml_ehnn import EMLEHNN, EMLHyperEdge
+    _HAS_EHNN = True
+except ImportError:
+    _HAS_EHNN = False
+    EMLEHNN = None
+    EMLHyperEdge = None
+
 import hashlib
 import json
 import math
@@ -331,6 +342,196 @@ class EMLLiteKB:
                 new_patterns += 1
         self._sig_cache = None
         return new_patterns
+
+    # ── EHNN 集成 (T13) ──────────────────────────────────────────
+    def extract_ehnn_features(self, edges: List[HyperEdge] = None) -> Dict:
+        """ℐ-weighted EHNN 特征提取
+
+        使用 EMLEHNN 从超边集合中提取等变特征。
+        如果 EMLEHNN 不可用，降级为简单的 ℐ 加权平均。
+
+        Args:
+            edges: 要提取特征的超边列表，None 则使用全部
+
+        Returns:
+            {
+                "features": List[List[float]],   # 每条超边的特征向量
+                "i_weights": List[float],        # ℐ 权重列表
+                "hard_anchor_mask": List[bool],  # 硬锚点掩码
+                "mus_conflict_ids": List[str],   # MUS 冲突组 ID
+                "graph_summary": Dict,           # 图摘要信息
+            }
+        """
+        logger = logging.getLogger(__name__)
+
+        # 确定要处理的超边集合
+        if edges is None:
+            edges = list(self.patterns.values())
+
+        if not edges:
+            logger.warning("extract_ehnn_features: 超边列表为空")
+            return {
+                "features": [],
+                "i_weights": [],
+                "hard_anchor_mask": [],
+                "mus_conflict_ids": [],
+                "graph_summary": {
+                    "n_edges": 0,
+                    "n_nodes": 0,
+                    "avg_i": 0.0,
+                    "ehnn_used": False,
+                },
+            }
+
+        # 收集 ℐ 权重和硬锚点掩码
+        i_weights: List[float] = [e.I_value for e in edges]
+        hard_anchor_mask: List[bool] = [e.I_value >= 0.95 for e in edges]
+        mus_conflict_ids: List[Optional[str]] = [
+            e.bian_anchor.get("mus_conflict_id") if e.bian_anchor else None
+            for e in edges
+        ]
+
+        # 收集所有节点并建立索引映射（HyperEdge.nodes 为 frozenset[str]，
+        # EMLHyperEdge.nodes 为 List[int]，需要映射）
+        all_nodes: Set[str] = set()
+        for e in edges:
+            all_nodes.update(e.nodes)
+        node_list: List[str] = sorted(all_nodes)
+        node_to_idx: Dict[str, int] = {n: i for i, n in enumerate(node_list)}
+
+        # 尝试使用 EHNN 提取等变特征
+        if _HAS_EHNN and EMLEHNN is not None:
+            try:
+                # 转换 HyperEdge → EMLHyperEdge 格式
+                eml_edges: List[EMLHyperEdge] = []
+                for e in edges:
+                    nodes_int: List[int] = [node_to_idx[n] for n in e.nodes]
+                    eml_edge = EMLHyperEdge(
+                        edge_id=e.edge_id,
+                        nodes=nodes_int,
+                        i_value=e.I_value,
+                        is_hard_anchor=(e.I_value >= 0.95),
+                        mus_conflict_id=(
+                            e.bian_anchor.get("mus_conflict_id")
+                            if e.bian_anchor else None
+                        ),
+                        features=[],
+                    )
+                    eml_edges.append(eml_edge)
+
+                # 创建 EHNN 实例并前向传播
+                ehnn = EMLEHNN(
+                    in_dim=64,
+                    hidden_dim=128,
+                    out_dim=64,
+                    k=3,
+                    i_threshold=0.1,
+                )
+                result = ehnn.forward(eml_edges)
+
+                # forward 返回池化后的图级特征 (pooled_features)，
+                # 将其广播为每条边的特征向量
+                pooled_features: List[float] = result.get(
+                    "pooled_features", []
+                )
+                features: List[List[float]] = [
+                    list(pooled_features) for _ in edges
+                ]
+
+                graph_summary: Dict[str, Any] = {
+                    "n_edges": len(edges),
+                    "n_nodes": len(all_nodes),
+                    "avg_i": sum(i_weights) / len(i_weights),
+                    "ehnn_used": True,
+                    "snap_loss": result.get("snap_loss", 0.0),
+                    "output_dim": result.get("output_dim", 64),
+                    "mus_branches": list(
+                        result.get("mus_branches", {}).keys()
+                    ),
+                }
+
+                logger.info(
+                    f"EHNN 特征提取成功: {len(features)} 条超边, "
+                    f"output_dim={graph_summary['output_dim']}, "
+                    f"snap_loss={graph_summary['snap_loss']:.4f}"
+                )
+
+                return {
+                    "features": features,
+                    "i_weights": i_weights,
+                    "hard_anchor_mask": hard_anchor_mask,
+                    "mus_conflict_ids": mus_conflict_ids,
+                    "graph_summary": graph_summary,
+                }
+            except Exception as ex:
+                logger.warning(
+                    f"EHNN 前向传播失败，降级为 ℐ 加权平均: {ex}"
+                )
+
+        # 降级路径：简单 ℐ 加权平均
+        features = [
+            self.compute_i_weighted_embedding(e, dim=64) for e in edges
+        ]
+
+        graph_summary = {
+            "n_edges": len(edges),
+            "n_nodes": len(all_nodes),
+            "avg_i": sum(i_weights) / len(i_weights),
+            "ehnn_used": False,
+        }
+
+        logger.info(
+            f"ℐ 加权平均降级特征提取: {len(features)} 条超边"
+        )
+
+        return {
+            "features": features,
+            "i_weights": i_weights,
+            "hard_anchor_mask": hard_anchor_mask,
+            "mus_conflict_ids": mus_conflict_ids,
+            "graph_summary": graph_summary,
+        }
+
+    def compute_i_weighted_embedding(
+        self, edge: HyperEdge, dim: int = 64
+    ) -> List[float]:
+        """计算单条超边的 ℐ 加权嵌入向量
+
+        ℐ 加权: embedding = ℐ × base_embedding
+        硬锚点: ℐ 设为 ≥0.95
+
+        Args:
+            edge: 超边
+            dim: 嵌入维度
+
+        Returns:
+            ℐ 加权后的嵌入向量
+        """
+        logger = logging.getLogger(__name__)
+
+        # 基于 edge_id 的确定性哈希生成基础嵌入
+        h: bytes = hashlib.sha256(edge.edge_id.encode("utf-8")).digest()
+
+        # 扩展哈希到所需维度（归一化到 [-1, 1]）
+        base_embedding: List[float] = []
+        for i in range(dim):
+            byte_idx: int = i % len(h)
+            val: float = (h[byte_idx] / 127.5) - 1.0
+            base_embedding.append(val)
+
+        # ℐ 加权: embedding = ℐ × base_embedding
+        i_val: float = edge.I_value
+        # 硬锚点: ℐ 设为 ≥0.95
+        if i_val >= 0.95:
+            i_val = max(i_val, 0.95)
+
+        weighted: List[float] = [i_val * v for v in base_embedding]
+
+        logger.debug(
+            f"ℐ 加权嵌入: edge={edge.edge_id}, ℐ={i_val:.4f}, dim={dim}"
+        )
+
+        return weighted
 
 
 @dataclass

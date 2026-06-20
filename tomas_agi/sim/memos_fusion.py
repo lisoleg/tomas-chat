@@ -32,6 +32,31 @@ try:
 except ImportError:
     from contradiction_detector import ContradictionDetector
 
+# 可选依赖：κ-Snap 算子（Merkle Root 批上链）
+try:
+    from .ksnap_operator import KSnapOperator, SnapEvent
+    _HAS_KSNAP = True
+except ImportError:
+    try:
+        from ksnap_operator import KSnapOperator, SnapEvent
+        _HAS_KSNAP = True
+    except ImportError:
+        _HAS_KSNAP = False
+        KSnapOperator = None  # type: ignore
+        SnapEvent = None  # type: ignore
+
+# 可选依赖：Mina 递归 SNARK 桥接（上链存证）
+try:
+    from .mina_kappa_bridge import MinaTOMASSnap
+    _HAS_MINA = True
+except ImportError:
+    try:
+        from mina_kappa_bridge import MinaTOMASSnap
+        _HAS_MINA = True
+    except ImportError:
+        _HAS_MINA = False
+        MinaTOMASSnap = None  # type: ignore
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -83,6 +108,57 @@ class MemoryRecord:
         )
 
 
+@dataclass
+class MUSDualStoreEntry:
+    """MUS 双存条目：互斥稳态对（波粒二象性模式）。
+
+    互斥稳态不强制平均，保留冲突分支。
+    例如：光的"波"描述与"粒"描述共存，而非取折中值。
+
+    Attributes:
+        entry_id: 条目唯一标识
+        description_a: 描述A（如"波"）
+        description_b: 描述B（如"粒"）
+        code_a: 代码/数据A
+        code_b: 代码/数据B
+        created_at: 创建时间戳
+        snap_ref: 关联的 κ-Snap 事件 ID
+    """
+
+    entry_id: str
+    description_a: str
+    description_b: str
+    code_a: str
+    code_b: str
+    created_at: float = field(default_factory=time.time)
+    snap_ref: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典。"""
+        return {
+            "entry_id": self.entry_id,
+            "description_a": self.description_a,
+            "description_b": self.description_b,
+            "code_a": self.code_a,
+            "code_b": self.code_b,
+            "created_at": self.created_at,
+            "snap_ref": self.snap_ref,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "MUSDualStoreEntry":
+        """从字典反序列化。"""
+        return cls(
+            entry_id=d["entry_id"],
+            description_a=d.get("description_a", ""),
+            description_b=d.get("description_b", ""),
+            code_a=d.get("code_a", ""),
+            code_b=d.get("code_b", ""),
+            created_at=d.get("created_at", time.time()),
+            snap_ref=d.get("snap_ref"),
+        )
+
+
 class MemoryStore:
     """
     轻量级记忆存储（模拟 MemOS）
@@ -99,6 +175,7 @@ class MemoryStore:
     def __init__(self, store_path: str = None):
         self.store_path = store_path or "tomas_agi/data/memory_store.json"
         self._records: Dict[str, MemoryRecord] = {}
+        self._mus_duals: Dict[str, MUSDualStoreEntry] = {}
         self._load()
     
     def _load(self):
@@ -273,6 +350,46 @@ class MemoryStore:
         
         return mus_pairs
 
+    # ----- MUS 双存增强 (T14) -----
+
+    def store_mus_dual(self, key: str, entry: MUSDualStoreEntry) -> bool:
+        """存储互斥稳态对（MUS Dual Storage）。
+
+        波粒二象性模式：互斥稳态不强制平均，保留冲突分支。
+
+        Args:
+            key: 存储键
+            entry: MUS 双存条目
+
+        Returns:
+            是否存储成功
+        """
+        self._mus_duals[key] = entry
+        logger.info(
+            "MUS 双存已存储: key=%s, entry_id=%s, A='%s' / B='%s'",
+            key, entry.entry_id, entry.description_a[:20], entry.description_b[:20],
+        )
+        return True
+
+    def retrieve_mus_dual(self, key: str) -> Optional[MUSDualStoreEntry]:
+        """检索互斥稳态对。
+
+        Args:
+            key: 存储键
+
+        Returns:
+            MUS 双存条目，不存在则返回 None
+        """
+        return self._mus_duals.get(key)
+
+    def list_mus_duals(self) -> List[str]:
+        """列出所有 MUS 双存键。
+
+        Returns:
+            键列表
+        """
+        return list(self._mus_duals.keys())
+
 
 class TOMAS_Mem_OS_Fusion:
     """
@@ -338,6 +455,10 @@ class TOMAS_Mem_OS_Fusion:
             f"TOMAS-MemOS 融合层初始化完成: theta_dead={theta_dead}, "
             f"enable_mus={enable_mus}, enable_eml={enable_eml}"
         )
+
+        # T14: κ-Snap 批上链 — 待提交事件队列
+        self._pending_snap_events: List[Any] = []
+        self._mina_snap: Optional[Any] = None
     
     def estimate_i(self, user_input: str, context: Dict[str, Any]) -> float:
         """
@@ -1478,6 +1599,125 @@ class TOMAS_Mem_OS_Fusion:
         if not self.itot_installed: return {"status": "not_installed"}
         return self._itot_bridge.stats
 
+    # ══════════════════════════════════════════════════════════
+    # κ-Snap 批上链集成 (T14)
+    # ══════════════════════════════════════════════════════════
+
+    def add_snap_event(self, event: Any) -> None:
+        """添加 κ-Snap 事件到待上链队列。
+
+        Args:
+            event: SnapEvent 实例
+        """
+        self._pending_snap_events.append(event)
+        logger.debug(
+            "SnapEvent 已加入待上链队列: %s (队列长度=%d)",
+            getattr(event, "event_id", str(id(event))),
+            len(self._pending_snap_events),
+        )
+
+    def get_pending_snap_events(self) -> List:
+        """获取待上链的 SnapEvent 列表。
+
+        Returns:
+            待上链事件列表（副本）
+        """
+        return list(self._pending_snap_events)
+
+    def batch_commit_to_chain(self, events: List) -> str:
+        """批量提交 κ-Snap 事件到链上（Merkle Root 存证）。
+
+        流程：
+          1. 调用 KSnapOperator.batch_merkle_root() 计算 Merkle Root
+          2. 可选调用 MinaTOMASSnap.batch_prove() 上链
+          3. 返回 merkle_root hash
+
+        Args:
+            events: SnapEvent 列表
+
+        Returns:
+            Merkle Root 哈希字符串（十六进制）
+        """
+        if not events:
+            logger.info("batch_commit_to_chain: 空事件列表，返回全零 Merkle Root")
+            return "0" * 64
+
+        # 1. 计算 Merkle Root
+        merkle_root: str
+        if _HAS_KSNAP and KSnapOperator is not None:
+            merkle_root = KSnapOperator.batch_merkle_root(events)
+            logger.info(
+                "batch_commit_to_chain: Merkle Root=%s (%d events)",
+                merkle_root[:16] + "...",
+                len(events),
+            )
+        else:
+            # 降级：本地 SHA-256 简单拼接哈希
+            import hashlib
+            combined = "".join(
+                str(getattr(e, "event_id", "")) + str(getattr(e, "timestamp", ""))
+                for e in events
+            )
+            merkle_root = hashlib.sha256(combined.encode("utf-8")).hexdigest()
+            logger.warning(
+                "batch_commit_to_chain: KSnapOperator 不可用，使用降级哈希: %s...",
+                merkle_root[:16],
+            )
+
+        # 2. 可选上链（MinaTOMASSnap）
+        if _HAS_MINA and MinaTOMASSnap is not None:
+            try:
+                mina = self._get_mina_snap()
+                proof_hash = mina.batch_prove(events)
+                logger.info(
+                    "batch_commit_to_chain: Mina 上链完成, proof_hash=%s...",
+                    proof_hash[:16],
+                )
+            except Exception as e:
+                logger.warning("batch_commit_to_chain: Mina 上链失败 (降级): %s", e)
+
+        return merkle_root
+
+    def flush_snap_events(self) -> str:
+        """批量提交所有待上链事件，返回 Merkle Root。
+
+        提交后清空待上链队列。
+
+        Returns:
+            Merkle Root 哈希字符串（十六进制）
+        """
+        events = self._pending_snap_events
+        if not events:
+            logger.info("flush_snap_events: 无待上链事件")
+            return "0" * 64
+
+        merkle_root = self.batch_commit_to_chain(events)
+        committed_count = len(events)
+        self._pending_snap_events = []
+        logger.info(
+            "flush_snap_events: 已提交 %d 个事件, merkle_root=%s...",
+            committed_count,
+            merkle_root[:16],
+        )
+        return merkle_root
+
+    def _get_mina_snap(self) -> Any:
+        """懒加载 MinaTOMASSnap 实例（单例）。"""
+        if self._mina_snap is None:
+            if _HAS_MINA and MinaTOMASSnap is not None:
+                self._mina_snap = MinaTOMASSnap()
+                logger.info("MinaTOMASSnap 实例已懒加载")
+            else:
+                logger.warning("MinaTOMASSnap 不可用，跳过上链")
+        return self._mina_snap
+
 
 # 导出
-__all__ = ["TOMAS_Mem_OS_Fusion", "MemoryStore", "MemoryRecord", "PsiAnchor", "PsiAnchorManager"]
+__all__ = [
+    "TOMAS_Mem_OS_Fusion",
+    "MemoryStore",
+    "MemoryRecord",
+    "MUSDualStoreEntry",
+    "PsiAnchor",
+    "PsiAnchorManager",
+]

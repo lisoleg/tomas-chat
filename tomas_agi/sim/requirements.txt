@@ -2,3 +2,10 @@ flask>=3.0
 flask-cors>=5.0
 sqlalchemy>=2.0
 alembic>=1.13
+
+# TOMAS v2.0 可选依赖（模块缺失时自动降级，不影响服务器启动）
+numpy>=1.24          # EHNN / 等变层数值计算
+networkx>=3.0        # Aether SCM 图操作（DAG 环检测 / 混淆因子发现）
+jieba>=0.42          # HNC NLU 管道中文分词
+httpx>=0.25          # Fediverse / Celo HTTP 客户端
+jsonschema>=4.20     # API 请求校验

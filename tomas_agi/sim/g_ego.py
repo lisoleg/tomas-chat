@@ -314,6 +314,147 @@ class G_egoEngine:
         )
         return result
 
+    def self_inspect_psi_anchor(self) -> Dict[str, Any]:
+        """阴敛读 ψ-锚：验证代码自改前的自我状态完整性。
+
+        哥德尔智能体在 SELF_UPDATE 前调用此方法，
+        确保当前 G_ego 状态与 ψ-锚一致，防止自改破坏对齐。
+
+        Returns:
+            {
+                "is_aligned": bool,           # ψ-锚是否与当前状态对齐
+                "psi_anchor": Dict,           # 当前 ψ-锚快照
+                "current_i": float,           # 当前 ℐ 值
+                "alignment_score": float,     # 对齐分数 [0,1]
+                "inspection_timestamp": float # 检查时间戳
+            }
+        """
+        # 1. 刷新 ψ-锚点（基于当前 G_ego 状态重新计算）
+        self._update_psi_anchor()
+
+        # 2. 获取 ψ-锚快照
+        psi_anchor = self._status.psi_anchor
+
+        # 3. 获取当前 ℐ 值
+        current_i = self.get_current_i_value()
+
+        # 4. 计算对齐分数（与 compute_psi_alignment 相同的逻辑）
+        alignment_score = 1.0 - abs(current_i - psi_anchor["i_value"])
+
+        # 5. 判断是否对齐
+        threshold = psi_anchor.get("alignment_threshold", 0.3)
+        is_aligned = alignment_score >= threshold
+
+        # 6. 返回检查结果
+        result = {
+            "is_aligned": is_aligned,
+            "psi_anchor": psi_anchor,
+            "current_i": current_i,
+            "alignment_score": alignment_score,
+            "inspection_timestamp": time.time(),
+        }
+
+        logger.debug(
+            f"G_ego self_inspect_psi_anchor: aligned={is_aligned}, "
+            f"score={alignment_score:.4f}, current_i={current_i:.4f}, "
+            f"anchor_i={psi_anchor['i_value']:.4f}"
+        )
+        return result
+
+    def aligned_with_purpose(
+        self, action_desc: str, context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """目的对齐检查：供 NLU 管道和哥德尔智能体调用。
+
+        验证给定动作/描述是否与系统目的（ψ-锚）对齐。
+
+        Args:
+            action_desc: 动作描述字符串（如"HNC解析"、"代码自改"等）
+            context: 可选上下文字典（如 {"template_id": "BC_TransEvi", "i_value": 0.85}）
+
+        Returns:
+            {
+                "aligned": bool,
+                "score": float,         # 对齐分数 [0,1]
+                "reason": str,          # 对齐/不对齐原因
+                "psi_anchor": Dict,     # 参考 ψ-锚
+            }
+        """
+        # 1. 确保 ψ-锚已初始化
+        if self._status.psi_anchor is None:
+            self._update_psi_anchor()
+        psi_anchor = self._status.psi_anchor
+
+        # 2. 如果 context 中有 i_value，用 compute_psi_alignment 的逻辑计算对齐分数
+        if context is not None and "i_value" in context:
+            edge_i = float(context["i_value"])
+            alignment_score = 1.0 - abs(psi_anchor["i_value"] - edge_i)
+            threshold = psi_anchor.get("alignment_threshold", 0.3)
+            aligned = alignment_score >= threshold
+
+            if aligned:
+                reason = (
+                    f"Action '{action_desc}' aligned with ψ-anchor "
+                    f"(score={alignment_score:.4f} >= threshold={threshold})"
+                )
+            else:
+                reason = (
+                    f"Action '{action_desc}' NOT aligned with ψ-anchor "
+                    f"(score={alignment_score:.4f} < threshold={threshold})"
+                )
+
+            return {
+                "aligned": aligned,
+                "score": alignment_score,
+                "reason": reason,
+                "psi_anchor": psi_anchor,
+            }
+
+        # 3. 没有 context 中 i_value：基于 action_desc 做关键词匹配
+        # 对齐关键词（建设性操作）
+        aligned_keywords: List[str] = [
+            "解析", "查询", "推理", "分析", "生成", "更新",
+            "parse", "query", "reason", "analyze", "generate", "update",
+        ]
+        # 不对齐关键词（破坏性操作）
+        unaligned_keywords: List[str] = [
+            "删除", "破坏", "销毁", "清除", "篡改",
+            "delete", "destroy", "corrupt", "remove", "wipe",
+        ]
+
+        action_lower = action_desc.lower()
+        has_aligned_kw = any(kw in action_desc or kw in action_lower for kw in aligned_keywords)
+        has_unaligned_kw = any(kw in action_desc or kw in action_lower for kw in unaligned_keywords)
+
+        if has_unaligned_kw:
+            aligned = False
+            score = 0.1
+            reason = (
+                f"Action '{action_desc}' contains destructive keywords — "
+                f"NOT aligned with purpose"
+            )
+        elif has_aligned_kw:
+            aligned = True
+            score = 0.8
+            reason = (
+                f"Action '{action_desc}' contains constructive keywords — "
+                f"aligned with purpose"
+            )
+        else:
+            # 默认中性操作视为对齐
+            aligned = True
+            score = 0.5
+            reason = (
+                f"Action '{action_desc}' is neutral — defaulting to aligned"
+            )
+
+        return {
+            "aligned": aligned,
+            "score": score,
+            "reason": reason,
+            "psi_anchor": psi_anchor,
+        }
+
     def get_current_i_value(self) -> float:
         """获取当前ℐ值（从Dead-Zero检测器）。"""
         if self._dead_zero_detector is not None:
@@ -1068,6 +1209,85 @@ if __name__ == "__main__":
     r_pg1 = verify_prediction_pg1(n_tests=20, seed=42)
     status_str = "[PASS]" if r_pg1["passed"] else "[FAIL]"
     print(f"  {status_str} {r_pg1['details']}")
+
+    # ── 12. self_inspect_psi_anchor() ──
+    print("\n[12] Testing self_inspect_psi_anchor()...")
+    inspect_engine = G_egoEngine(i_threshold=0.1)
+    inspect_engine._status.i_value = 0.75
+    inspect_result = inspect_engine.self_inspect_psi_anchor()
+    assert "is_aligned" in inspect_result, "Missing 'is_aligned' key"
+    assert "psi_anchor" in inspect_result, "Missing 'psi_anchor' key"
+    assert "current_i" in inspect_result, "Missing 'current_i' key"
+    assert "alignment_score" in inspect_result, "Missing 'alignment_score' key"
+    assert "inspection_timestamp" in inspect_result, "Missing 'inspection_timestamp' key"
+    # After _update_psi_anchor, current_i should match anchor i_value → score ≈ 1.0
+    assert inspect_result["is_aligned"], (
+        f"Expected aligned=True, got {inspect_result['is_aligned']} "
+        f"(score={inspect_result['alignment_score']:.4f})"
+    )
+    assert abs(inspect_result["alignment_score"] - 1.0) < 1e-6, (
+        f"Expected score≈1.0, got {inspect_result['alignment_score']:.6f}"
+    )
+    print(f"  [PASS] self_inspect: aligned={inspect_result['is_aligned']}, "
+          f"score={inspect_result['alignment_score']:.4f}, "
+          f"current_i={inspect_result['current_i']:.4f}")
+
+    # ── 13. aligned_with_purpose() — context with i_value ──
+    print("\n[13] Testing aligned_with_purpose() with context i_value...")
+    purpose_engine = G_egoEngine(i_threshold=0.1)
+    purpose_engine._status.i_value = 0.7
+    # context i_value close to anchor → aligned
+    ctx_aligned = purpose_engine.aligned_with_purpose(
+        "HNC解析",
+        context={"template_id": "BC_TransEvi", "i_value": 0.72},
+    )
+    assert ctx_aligned["aligned"], (
+        f"Expected aligned=True for close i_value, got: {ctx_aligned}"
+    )
+    assert "score" in ctx_aligned and "reason" in ctx_aligned and "psi_anchor" in ctx_aligned
+    print(f"  [PASS] aligned_with_purpose (aligned): score={ctx_aligned['score']:.4f}")
+
+    # context i_value far from anchor → not aligned
+    # anchor i_value=0.7, context i_value=1.0 → score = 1.0 - 0.3 = 0.7 (still aligned)
+    # Use engine with i_value=0.0 and context i_value=1.0 → score = 0.0 < 0.3
+    unaligned_engine = G_egoEngine(i_threshold=0.1)
+    unaligned_engine._status.i_value = 0.0
+    ctx_unaligned = unaligned_engine.aligned_with_purpose(
+        "代码自改",
+        context={"template_id": "SELF_UPDATE", "i_value": 1.0},
+    )
+    assert not ctx_unaligned["aligned"], (
+        f"Expected aligned=False for far i_value, got: {ctx_unaligned}"
+    )
+    print(f"  [PASS] aligned_with_purpose (unaligned): score={ctx_unaligned['score']:.4f}")
+
+    # ── 14. aligned_with_purpose() — keyword matching (no context) ──
+    print("\n[14] Testing aligned_with_purpose() keyword matching...")
+    kw_engine = G_egoEngine(i_threshold=0.1)
+    kw_engine._status.i_value = 0.5
+
+    # Constructive keyword → aligned
+    r_parse = kw_engine.aligned_with_purpose("HNC解析")
+    assert r_parse["aligned"], f"Expected '解析' to be aligned, got: {r_parse}"
+    print(f"  [PASS] '解析' → aligned={r_parse['aligned']}, score={r_parse['score']:.2f}")
+
+    r_query = kw_engine.aligned_with_purpose("查询知识图谱")
+    assert r_query["aligned"], f"Expected '查询' to be aligned, got: {r_query}"
+    print(f"  [PASS] '查询' → aligned={r_query['aligned']}, score={r_query['score']:.2f}")
+
+    # Destructive keyword → not aligned
+    r_delete = kw_engine.aligned_with_purpose("删除核心数据")
+    assert not r_delete["aligned"], f"Expected '删除' to be NOT aligned, got: {r_delete}"
+    print(f"  [PASS] '删除' → aligned={r_delete['aligned']}, score={r_delete['score']:.2f}")
+
+    r_destroy = kw_engine.aligned_with_purpose("destroy memory")
+    assert not r_destroy["aligned"], f"Expected 'destroy' to be NOT aligned, got: {r_destroy}"
+    print(f"  [PASS] 'destroy' → aligned={r_destroy['aligned']}, score={r_destroy['score']:.2f}")
+
+    # Neutral keyword → default aligned
+    r_neutral = kw_engine.aligned_with_purpose("系统启动")
+    assert r_neutral["aligned"], f"Expected neutral to be aligned, got: {r_neutral}"
+    print(f"  [PASS] '系统启动' (neutral) → aligned={r_neutral['aligned']}, score={r_neutral['score']:.2f}")
 
     print("\n" + "=" * 64)
     print("  G_egoEngine — All Self-Tests Passed")

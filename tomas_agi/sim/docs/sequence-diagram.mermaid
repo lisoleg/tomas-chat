@@ -1,0 +1,158 @@
+%% TOMAS v2.0 程序调用流程 — 时序图
+%% 包含 3 个核心场景
+
+%% ============================================================
+%% 场景 A: HNC NLU 端到端流程
+%% ============================================================
+sequenceDiagram
+    participant User as 用户
+    participant Server as server.py
+    participant Pipeline as TOMASNLU_Pipeline
+    participant HNC as HNCParserWrapper
+    participant Injector as EMLInjector
+    participant GEgo as G_egoEngine
+    participant KSnap as KSnapOperator
+    participant DZ as DeadZeroChecker
+
+    User->>Server: POST /api/nlu/process {text: "我吃苹果"}
+    Server->>Pipeline: process("我吃苹果")
+
+    Pipeline->>HNC: parse("我吃苹果")
+    HNC->>HNC: jieba分词 → ["我", "吃", "苹果"]
+    HNC->>HNC: encode_concept("我") → "v"
+    HNC->>HNC: encode_concept("吃") → "p"
+    HNC->>HNC: encode_concept("苹果") → "v"
+    HNC->>HNC: match_template(["v","p","v"]) → "BC_TransEvi"
+    HNC-->>Pipeline: HNCParseResult{template_id="BC_TransEvi", chunks, concept_codes=["v","p","v"]}
+
+    Pipeline->>Injector: build_context_block(matched_concepts, related_edges)
+    Note over Pipeline,Injector: HNC句类模板 → EML超边Schema映射<br/>BC_TransEvi → transitive_action超边
+    Injector-->>Pipeline: EML上下文文本 + 超边Schema
+
+    Pipeline->>Pipeline: _check_psi_anchor(eml_edge)
+    Pipeline->>GEgo: compute_psi_alignment(eml_edge)
+    GEgo->>GEgo: _update_psi_anchor()
+    GEgo-->>Pipeline: {alignment_score: 0.92, aligned: true}
+
+    Pipeline->>DZ: check_dead_zero(i_value)
+    DZ-->>Pipeline: {is_dead: false}
+
+    Pipeline->>Pipeline: _write_ksnap(eml_edge)
+    Pipeline->>KSnap: execute(CandidateEdge{...})
+    KSnap->>KSnap: Ftel阈值检查 ✓
+    KSnap->>KSnap: Dead-Zero检查 ✓
+    KSnap->>KSnap: MUS检查 ✓
+    KSnap->>KSnap: 执行投影 → ManifestedEdge
+    KSnap-->>Pipeline: SnapEvent{result: MANIFESTED}
+
+    Pipeline->>Pipeline: _compute_initial_i(hnc_result)
+    Note over Pipeline: ℐ = depth_factor × cite_factor<br/>= 1.0 × 0.85 = 0.85 (上限0.95)
+
+    Pipeline-->>Server: NLUPipelineResult{template_id, chunks, concept_codes, i_value: 0.85, snap_event}
+    Server-->>User: {success: true, data: NLUPipelineResult}
+
+%% ============================================================
+%% 场景 B: 哥德尔智能体自改进流程
+%% ============================================================
+sequenceDiagram
+    participant Trigger as 触发观察
+    participant Godel as TOMASGodelAgent
+    participant LLM as DeepSeek API
+    participant GEgo as G_egoEngine
+    participant KSnap as KSnapOperator
+    participant AEGIS as AEGISEngine
+    participant DZ as DeadZeroChecker
+    participant Memos as MemoryStore
+
+    Trigger->>Godel: self_improve_loop("发现推理延迟可优化")
+
+    Godel->>LLM: 生成改进代码(observation + 当前代码上下文)
+    LLM-->>Godel: new_code = "def optimized_inference(...): ..."
+
+    Godel->>Godel: _pg_imprison_check(new_code)
+    Note over Godel: 静态分析：检查 new_code 是否<br/>删除/修改 H_HARD_SYMBOLS 中的符号
+    alt H_hard 被修改
+        Godel-->>Trigger: GodelImproveResult{accepted: false, rejection_reason: "H_hard violation"}
+    end
+    Note over Godel: PG-囚禁检查通过 ✓
+
+    Godel->>AEGIS: 在沙箱中运行 new_code
+    AEGIS->>AEGIS: VariantIsolationManager 隔离测试
+    AEGIS-->>Godel: sandbox_result{passed: true, crr: 0.97}
+
+    Godel->>GEgo: self_inspect_psi_anchor()
+    Note over GEgo: 阴敛读ψ-锚，验证代码自改前的<br/>自我状态完整性
+    GEgo-->>Godel: {psi_integrity: true, self_state: "持有安全约束"}
+
+    Godel->>Godel: _evaluate_i(new_code, test_cases)
+    Note over Godel: ℐ_new = 0.92<br/>接受条件: ℐ_new > ℐ_old × 1.05<br/>0.92 > 0.80 × 1.05 = 0.84 ✓
+
+    Godel->>Godel: _mus_dual_store(old_code, new_code)
+    Note over Godel: 旧代码和新代码互斥稳态保留
+    Godel->>Memos: write(MUS dual record)
+    Memos-->>Godel: MUSResult{retention: "double-store"}
+
+    Godel->>Godel: _record_code_evolution(new_code, trigger_obs)
+    Godel->>KSnap: execute(CandidateEdge{type: "CODE_EVOLUTION"})
+    Note over KSnap: SnapEvent 新增字段:<br/>new_code_hash, trigger_obs_id, llm_version
+    KSnap-->>Godel: SnapEvent{result: MANIFESTED, new_code_hash: "0x..."}
+
+    Godel->>Godel: _hot_swap(new_code, sandbox_result)
+    Note over Godel: 影子沙箱 → 验收通过 → 原子切换
+
+    Godel-->>Trigger: GodelImproveResult{accepted: true, i_before: 0.80, i_after: 0.92}
+
+%% ============================================================
+%% 场景 C: AgentWeb 跨节点因果通信流程
+%% ============================================================
+sequenceDiagram
+    participant NodeA as AgentWebRuntime (Node A)
+    participant VCA as VectorClock (Node A)
+    participant FB as FediverseBridge
+    participant NodeB as AgentWebRuntime (Node B)
+    participant VCB as VectorClock (Node B)
+    participant CDB as CausalDeliveryBuffer (Node B)
+    participant KSnapB as KSnapOperator (Node B)
+
+    NodeA->>VCA: tick()
+    Note over VCA: VC_A = {A: 1, B: 0}
+    NodeA->>VCA: send()
+    VCA-->>NodeA: VC_snapshot = {A: 2, B: 0}
+
+    NodeA->>NodeA: 构建 AgentWebMessage{vc: {A:2,B:0}, snap_ref: "ψ_abc123"}
+    NodeA->>NodeA: _log_to_ksnap(msg) → SnapEvent
+    NodeA->>FB: send_activity(activity, target="Node B")
+    Note over FB: extend_activitypub(msg, vc, snap_ref)
+
+    FB->>NodeB: POST /inbox (ActivityPub message)
+
+    NodeB->>NodeB: receive_message(msg)
+    NodeB->>NodeB: check_causal_predecessors(msg)
+    NodeB->>VCB: 检查 VC_B 是否 ≥ msg.vc 的所有前置
+
+    alt 因果前置到齐
+        Note over NodeB: VC_B = {A: 2, B: 1} ≥ msg.vc = {A:2, B:0} ✓
+        NodeB->>VCB: receive(msg.vc)
+        Note over VCB: VC_B = {A: 2, B: 2}
+        NodeB->>NodeB: 交付消息给 G_ego 处理
+        NodeB->>KSnapB: _log_to_ksnap(msg) → SnapEvent
+        NodeB-->>NodeB: {delivered: true}
+    else 因果前置未到齐
+        Note over NodeB: VC_B = {A: 1, B: 1} < msg.vc = {A:2, B:0}
+        NodeB->>CDB: deliver(msg)
+        CDB->>CDB: check_ready(msg) → false
+        CDB->>CDB: 放入 pending 缓冲
+        NodeB-->>NodeB: {delivered: false, buffered: true}
+
+        Note over NodeB: ...后续缺失的因果前置到达...
+        NodeB->>CDB: deliver(missing_msg)
+        CDB->>CDB: check_ready(missing_msg) → true
+        CDB->>VCB: receive(missing_msg.vc)
+        CDB->>CDB: 级联检查 pending 中的消息
+        CDB->>CDB: check_ready(original_msg) → true (解锁!)
+        CDB-->>NodeB: [missing_msg, original_msg] (按因果顺序交付)
+        NodeB->>KSnapB: 批量 _log_to_ksnap → SnapEvent[]
+    end
+
+    Note over KSnapB: 因果日志中的 SnapEvent<br/>可批量提交到 Mina 上链
+    KSnapB->>KSnapB: batch_merkle_root(events) → merkle_hash

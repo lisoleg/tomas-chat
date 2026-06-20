@@ -20,6 +20,7 @@ GPCT 边界层分解 (Generalized Prandtl-Cook Theorem)
 
 import math
 import heapq
+import logging
 from typing import List, Tuple, Dict, Set, Optional
 from collections import defaultdict
 from .hyperedge import HypEdge, EMLVertex
@@ -71,6 +72,9 @@ class GpctDecomposer:
         self._bl: List[int] = []        # 边界层节点 ID 列表
         self._or: List[int] = []        # 外区节点 ID 列表
         self._compute_coupling()
+
+        # 输出维度（基于边界层数量，GPCT 动态扩展）— T13
+        self.output_dim: int = len(self._bl)
 
     def _compute_coupling(self):
         """
@@ -200,6 +204,228 @@ class GpctDecomposer:
                 '边界区 (20<k≤30): 需要更多计算资源' if k <= 30 else
                 'NP 难区 (k>30): 需提升 κ 粗粒化或添加更多公理约束'
             ),
+        }
+
+    # ── T13: 动态输出维度扩展 + 因果层创检测 ────────────────────
+    def expand_output_dim(self, new_dim: int) -> Dict:
+        """动态扩展输出维度（范式转移时触发）
+
+        当检测到新的因果模式（层创涌现）时，自动扩展输出维度。
+
+        Args:
+            new_dim: 新的输出维度
+
+        Returns:
+            {
+                "old_dim": int,
+                "new_dim": int,
+                "expanded": bool,
+                "reason": str,
+            }
+        """
+        logger = logging.getLogger(__name__)
+        old_dim: int = self.output_dim
+
+        if new_dim <= old_dim:
+            logger.info(
+                f"维度扩展跳过: new_dim={new_dim} <= old_dim={old_dim}"
+            )
+            return {
+                "old_dim": old_dim,
+                "new_dim": old_dim,
+                "expanded": False,
+                "reason": (
+                    f"new_dim ({new_dim}) <= current dim ({old_dim}), "
+                    f"no expansion needed"
+                ),
+            }
+
+        self.output_dim = new_dim
+        logger.info(f"输出维度扩展: {old_dim} → {new_dim} (范式转移触发)")
+
+        return {
+            "old_dim": old_dim,
+            "new_dim": new_dim,
+            "expanded": True,
+            "reason": (
+                f"Paradigm shift detected, expanded output dimension "
+                f"from {old_dim} to {new_dim}"
+            ),
+        }
+
+    def detect_causal_emergence(self) -> Dict:
+        """检测因果边层创涌现
+
+        分析边界层分解结果，检测是否有新的因果模式涌现。
+        当边界层中出现高耦合度的新边时，触发层创。
+
+        涌现判定标准：
+          1. 计算所有节点的耦合度 ρᵢ 统计量（均值、标准差）
+          2. 设定异常阈值 = μ + 2σ（或 μ × 2 当 σ=0）
+          3. 边的耦合度（其所有节点 ρ 之和）超过阈值且与边界层相关 → 涌现
+
+        Returns:
+            {
+                "emerged": bool,               # 是否检测到层创
+                "emerged_edges": List[str],    # 涌现的边 ID
+                "suggested_dim_expansion": int, # 建议的维度扩展数
+                "details": Dict,               # 详细信息
+            }
+        """
+        logger = logging.getLogger(__name__)
+
+        # 获取分解结果
+        decomp_result: Dict = self.decompose()
+
+        # 收集所有耦合度值
+        all_rho: List[float] = list(self._rho.values())
+        if not all_rho:
+            logger.warning("detect_causal_emergence: 无耦合度数据")
+            return {
+                "emerged": False,
+                "emerged_edges": [],
+                "suggested_dim_expansion": 0,
+                "details": {"reason": "No coupling data available"},
+            }
+
+        # 计算耦合度统计量
+        avg_rho: float = sum(all_rho) / len(all_rho)
+        max_rho: float = max(all_rho)
+        variance: float = sum(
+            (r - avg_rho) ** 2 for r in all_rho
+        ) / len(all_rho)
+        std_rho: float = variance ** 0.5
+
+        # 异常高耦合度阈值: μ + 2σ（σ=0 时用 μ × 2）
+        threshold: float = (
+            avg_rho + 2 * std_rho if std_rho > 1e-9 else avg_rho * 2
+        )
+
+        # 检测涌现边：耦合度超过阈值且与边界层相关
+        bl_set: Set[int] = set(self._bl)
+        emerged_edges: List[str] = []
+
+        for e in self.edges:
+            # 边的总耦合度 = 其所有节点 ρ 之和
+            edge_rho: float = sum(
+                self._rho.get(n, 0.0) for n in e.nodes
+            )
+            # 涌现条件：耦合度超阈值 且 与边界层有关联
+            if edge_rho > threshold and any(
+                n in bl_set for n in e.nodes
+            ):
+                emerged_edges.append(e.eid)
+
+        emerged: bool = len(emerged_edges) > 0
+        # 建议扩展维度 = 涌现边数量（每条涌现边可能代表一个新的因果模式）
+        suggested_expansion: int = len(emerged_edges) if emerged else 0
+
+        logger.info(
+            f"层创检测: emerged={emerged}, "
+            f"emerged_edges={len(emerged_edges)}, "
+            f"avg_rho={avg_rho:.4f}, threshold={threshold:.4f}, "
+            f"suggested_dim_expansion={suggested_expansion}"
+        )
+
+        return {
+            "emerged": emerged,
+            "emerged_edges": emerged_edges,
+            "suggested_dim_expansion": suggested_expansion,
+            "details": {
+                "avg_rho": avg_rho,
+                "max_rho": max_rho,
+                "std_rho": std_rho,
+                "threshold": threshold,
+                "n_bl_edges": decomp_result.get("edges_bl", 0),
+                "n_mixed_edges": decomp_result.get("edges_mixed", 0),
+                "i_bl_ratio": decomp_result.get("i_bl_ratio", 0.0),
+                "current_output_dim": self.output_dim,
+            },
+        }
+
+    def on_new_data(self, new_edges: List) -> Dict:
+        """新数据到达时的回调，触发层创检测和维度扩展
+
+        当新超边到达时：
+          1. 将新边加入 self.edges
+          2. 重建节点 → 超边索引
+          3. 重新计算耦合度
+          4. 执行层创检测
+          5. 若检测到层创，触发维度扩展
+
+        Args:
+            new_edges: 新到达的超边列表
+
+        Returns:
+            {
+                "emergence_detected": bool,
+                "dim_expanded": bool,
+                "new_dim": int,
+                "details": Dict,
+            }
+        """
+        logger = logging.getLogger(__name__)
+
+        if not new_edges:
+            logger.info("on_new_data: 无新数据")
+            return {
+                "emergence_detected": False,
+                "dim_expanded": False,
+                "new_dim": self.output_dim,
+                "details": {"reason": "No new edges provided"},
+            }
+
+        # 1. 加入新边
+        old_edge_count: int = len(self.edges)
+        self.edges.extend(new_edges)
+        logger.info(
+            f"on_new_data: 添加 {len(new_edges)} 条新边 "
+            f"(总数 {old_edge_count} → {len(self.edges)})"
+        )
+
+        # 2. 重建节点 → 超边索引（增量追加新边的索引）
+        for e in new_edges:
+            for n in e.nodes:
+                self._node_to_edges[n].append(e)
+
+        # 更新节点总数
+        self._n_vertices = len(
+            set(n for e in self.edges for n in e.nodes)
+        )
+
+        # 3. 重新计算耦合度
+        self._compute_coupling()
+
+        # 4. 层创检测
+        emergence_result: Dict = self.detect_causal_emergence()
+
+        # 5. 若检测到层创，触发维度扩展
+        dim_expanded: bool = False
+        new_dim: int = self.output_dim
+
+        if emergence_result["emerged"]:
+            suggested: int = emergence_result["suggested_dim_expansion"]
+            if suggested > 0:
+                target_dim: int = self.output_dim + suggested
+                expand_result: Dict = self.expand_output_dim(target_dim)
+                dim_expanded = expand_result["expanded"]
+                new_dim = expand_result["new_dim"]
+                logger.info(
+                    f"on_new_data: 层创触发维度扩展 "
+                    f"{expand_result['old_dim']} → {new_dim}"
+                )
+
+        return {
+            "emergence_detected": emergence_result["emerged"],
+            "dim_expanded": dim_expanded,
+            "new_dim": new_dim,
+            "details": {
+                "n_new_edges": len(new_edges),
+                "n_total_edges": len(self.edges),
+                "n_total_vertices": self._n_vertices,
+                "emerged_edges": emergence_result["emerged_edges"],
+                "emergence_details": emergence_result["details"],
+            },
         }
 
 

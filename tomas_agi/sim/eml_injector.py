@@ -187,6 +187,132 @@ class EMLInjector:
         messages.append({"role": "user", "content": query})
         return messages
 
+    # ── HNC 句类 → EML 超边 Schema 映射 (TOMAS v2.0 T01) ──
+
+    # HNC 句类模板 → EML 超边 Schema 类型映射表
+    # 参考架构文档 Section 3.3 接口约定表
+    HNC_TEMPLATE_TO_SCHEMA: dict = {
+        "BC_TransEvi": {
+            "schema_type": "transitive_action",
+            "roles": ["agent", "patient", "theme"],
+        },
+        "BC_XJ": {
+            "schema_type": "attribute_judgment",
+            "roles": ["entity", "attribute", "standard"],
+        },
+        "BC_XS": {
+            "schema_type": "state_change",
+            "roles": ["entity", "initial_state", "result_state"],
+        },
+        "BC_Process": {
+            "schema_type": "process_result",
+            "roles": ["actor", "process", "outcome"],
+        },
+        "HC_Serial": {
+            "schema_type": "serial_action",
+            "roles": ["agent", "action1", "action2"],
+        },
+        "HC_Transfer": {
+            "schema_type": "transfer_action",
+            "roles": ["causer", "causee", "action", "result"],
+        },
+        "HC_Coordinate": {
+            "schema_type": "coordinate_relation",
+            "roles": ["conjunct1", "conjunct2", "connector"],
+        },
+    }
+
+    def map_hnc_template_to_eml_schema(self,
+                                        template_id: str,
+                                        concept_codes: list,
+                                        chunks: list) -> dict:
+        """将 HNC 句类模板映射为 EML 超边 Schema。
+
+        映射规则（从架构文档 Section 3.3）：
+        - BC_TransEvi → transitive_action(agent, patient, theme)
+        - BC_XJ → attribute_judgment(entity, attribute, standard)
+        - BC_XS → state_change(entity, initial_state, result_state)
+        - BC_Process → process_result(actor, process, outcome)
+        - HC_Serial → serial_action(agent, action1, action2)
+        - HC_Transfer → transfer_action(causer, causee, action, result)
+        - HC_Coordinate → coordinate_relation(conjunct1, conjunct2, connector)
+
+        Args:
+            template_id: HNC 句类模板 ID（如 "BC_TransEvi"）
+            concept_codes: HNC 概念基元码列表
+            chunks: 分词结果列表
+
+        Returns:
+            EML 超边 Schema 字典:
+            {
+                "schema_type": str,
+                "nodes": [{"id": str, "role": str, "concept": str, "hnc_code": str}, ...],
+                "edges": [{"nodes": [str], "i_val": float, "type": str}, ...],
+                "i_value": 0.0
+            }
+        """
+        # 查找模板映射
+        schema_map = self.HNC_TEMPLATE_TO_SCHEMA.get(template_id)
+        if schema_map is None:
+            # 未知模板：构建通用线性 Schema
+            nodes = []
+            for i, (code, chunk) in enumerate(zip(concept_codes, chunks)):
+                nodes.append({
+                    "id": f"n{i}",
+                    "role": f"arg{i}",
+                    "concept": chunk,
+                    "hnc_code": code,
+                })
+            return {
+                "schema_type": "generic_linear",
+                "nodes": nodes,
+                "edges": [{
+                    "nodes": chunks,
+                    "i_val": 0.0,
+                    "type": "generic",
+                }],
+                "i_value": 0.0,
+            }
+
+        schema_type = schema_map["schema_type"]
+        roles = schema_map["roles"]
+
+        # 构建 Schema 节点：将 chunks 映射到语义角色
+        nodes = []
+        for i, (code, chunk) in enumerate(zip(concept_codes, chunks)):
+            role = roles[i] if i < len(roles) else f"arg{i}"
+            nodes.append({
+                "id": f"n{i}",
+                "role": role,
+                "concept": chunk,
+                "hnc_code": code,
+            })
+
+        # 构建超边：主超边 + 角色边
+        edges = []
+        # 主超边：包含所有节点
+        edges.append({
+            "nodes": chunks,
+            "i_val": 0.0,
+            "type": schema_type,
+        })
+
+        # 角色边：agent→action, action→patient 等
+        if len(nodes) >= 2:
+            for i in range(len(nodes) - 1):
+                edges.append({
+                    "nodes": [nodes[i]["concept"], nodes[i + 1]["concept"]],
+                    "i_val": 0.0,
+                    "type": f"{nodes[i]['role']}_to_{nodes[i + 1]['role']}",
+                })
+
+        return {
+            "schema_type": schema_type,
+            "nodes": nodes,
+            "edges": edges,
+            "i_value": 0.0,
+        }
+
     # ── 参数更新 ──
 
     def update_params(self,
