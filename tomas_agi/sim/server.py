@@ -2314,8 +2314,10 @@ def api_hg_matroid_unionfind():
     支持 MUS / Paradox 两种回路类型
 
     输入 JSON: {
-        vids: [vid1, vid2, ...],     # 顶点范围 或
-        eids: [eid1, ...],           # 超边范围
+        seeds: ["概念1", ...],       # 种子概念 → 自动解析为 vids
+        vids: [vid1, vid2, ...],     # 或者直接给顶点 ID
+        eids: [eid1, ...],           # 或者直接给超边 ID
+        k: 1,                        # 跳数 (配合seeds使用, 默认1)
         detect_mus: true             # 是否检测 MUS 回路 (默认 true)
     }
     """
@@ -2324,11 +2326,36 @@ def api_hg_matroid_unionfind():
         from eml_dimred.unionfind_matroid import matroid_prune_unionfind
 
         data = request.get_json(silent=True) or {}
-        detect_mus = data.get("detect_mus", True)
         session = get_session()
         try:
             # 收集 eids
-            if "vids" in data:
+            if "seeds" in data:
+                # 概念名 → vid → eids
+                k = min(int(data.get("k", 1)), 3)
+                vids = set()
+                for concept in data["seeds"]:
+                    v = session.query(Vertex).filter(Vertex.concept == concept).first()
+                    if v:
+                        vids.add(v.vid)
+                if not vids:
+                    return jsonify({"success": False, "error": "no matching vertices for given seeds"}), 400
+                
+                eids = set()
+                frontier = list(vids)
+                for _ in range(k):
+                    next_frontier = set()
+                    for vid in frontier:
+                        for (eid,) in session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).all():
+                            if eid not in eids:
+                                eids.add(eid)
+                                # 扩展下一跳
+                                for (nvid,) in session.query(HyperEdgeNode.vid).filter(
+                                    HyperEdgeNode.eid == eid, HyperEdgeNode.vid != vid
+                                ).all():
+                                    next_frontier.add(nvid)
+                    frontier = list(next_frontier - vids)
+                    vids.update(frontier)
+            elif "vids" in data:
                 eids = set()
                 for vid in data["vids"]:
                     for (eid,) in session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).all():
@@ -2351,11 +2378,10 @@ def api_hg_matroid_unionfind():
                     i_val=e.i_val,
                     asym=e.asym,
                     weight=e.weight,
-                    is_mus_capable=(e.asym != 0),  # asym ≠ 0 → MUS-capable
                 ))
 
             # Union-Find 剪枝
-            base, stats = matroid_prune_unionfind(edges, detect_mus=detect_mus)
+            base, stats = matroid_prune_unionfind(edges)
 
             return jsonify({
                 "success": True,
@@ -2364,7 +2390,7 @@ def api_hg_matroid_unionfind():
                     "stats": stats,
                 },
                 "algorithm": "UnionFind (path compression + union by rank)",
-                "complexity": f"O(|E|·α(|V|)) for |E|={stats.get('total', '?')}",
+                "complexity": f"O(|E|·α(|V|)) for |E|={stats.get('original_count', '?')}",
             })
         finally:
             session.close()
@@ -2566,8 +2592,7 @@ def api_hg_export_eml_v2():
 
             # 写入临时文件
             tmp = tempfile.NamedTemporaryFile(suffix=".eml2", delete=False)
-            save_eml_v2(tmp.name, eml_vertices, eml_edges,
-                        source=f"TOMAS/{concept}", k=k)
+            save_eml_v2(tmp.name, eml_vertices, eml_edges)
 
             return jsonify({
                 "success": True,
