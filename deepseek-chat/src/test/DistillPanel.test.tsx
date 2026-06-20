@@ -57,7 +57,7 @@ class MockResizeObserver {
   unobserve = vi.fn()
   disconnect = vi.fn()
 }
-global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
+(globalThis as any).ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
 
 describe('DistillPanel', () => {

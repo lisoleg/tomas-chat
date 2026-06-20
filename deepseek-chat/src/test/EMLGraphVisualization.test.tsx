@@ -70,7 +70,7 @@ class MockResizeObserver {
   unobserve = vi.fn()
   disconnect = vi.fn()
 }
-global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
+(globalThis as any).ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
 // 构造测试数据
 function makeGraphData(vertexCount: number, edgeCount: number): EMLGraphData {

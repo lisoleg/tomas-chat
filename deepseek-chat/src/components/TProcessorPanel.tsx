@@ -289,19 +289,19 @@ export default function TProcessorPanel() {
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
-                <p className="text-2xl font-bold text-accent">{stats.totalCycles}</p>
+                <p className="text-2xl font-bold text-accent">{stats?.totalCycles}</p>
                 <p className="text-[10px] text-textSecondary mt-0.5">总周期</p>
               </div>
               <div className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
-                <p className="text-2xl font-bold text-red-400">{stats.deadZeroCount}</p>
+                <p className="text-2xl font-bold text-red-400">{stats?.deadZeroCount}</p>
                 <p className="text-[10px] text-textSecondary mt-0.5">死零拒绝</p>
               </div>
               <div className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
-                <p className="text-2xl font-bold text-amber-400">{stats.musCount}</p>
+                <p className="text-2xl font-bold text-amber-400">{stats?.musCount}</p>
                 <p className="text-[10px] text-textSecondary mt-0.5">MUS 触发</p>
               </div>
               <div className="bg-chatBgAlt rounded-xl border border-borderSubtle/30 p-3 text-center">
-                <p className="text-2xl font-bold text-cyan-400">{stats.snapCount}</p>
+                <p className="text-2xl font-bold text-cyan-400">{stats?.snapCount}</p>
                 <p className="text-[10px] text-textSecondary mt-0.5">κ-Snap 切片</p>
               </div>
             </div>

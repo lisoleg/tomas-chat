@@ -105,6 +105,8 @@ export default function AEGISPanel() {
         superseded: 0,
         buckets: 0,
         kappaLogLen: 0,
+        nBuckets: 0,
+        musDisputes: 0,
         phiGateEnabled: false,
         psiAlignmentRate: 0,
       });
@@ -185,7 +187,7 @@ export default function AEGISPanel() {
 
       {/* Tabs */}
       <div className="px-3 pt-2 flex gap-1 flex-shrink-0 border-b border-white/5">
-        {(['overview', 'variants', 'causal', 'bench'] as const[]).map(tab => (
+        {(['overview', 'variants', 'causal', 'bench'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -289,7 +291,7 @@ export default function AEGISPanel() {
                   Φ-Gate: {afsStats?.phiGateEnabled ? '启用' : '禁用'}
                 </span>
                 <span className="text-white/60">
-                  ψ-对齐率: <span className={afsStats && afsStats.psiAlignmentRate >= 0.9 ? 'text-emerald-300' : 'text-amber-300'}>{Math.round((afsStats?.psiAlignmentRate ?? 0) * 100)}%</span>
+                  ψ-对齐率: <span className={(afsStats?.psiAlignmentRate ?? 0) >= 0.9 ? 'text-emerald-300' : 'text-amber-300'}>{Math.round((afsStats?.psiAlignmentRate ?? 0) * 100)}%</span>
                 </span>
               </div>
             </div>

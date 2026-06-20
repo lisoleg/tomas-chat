@@ -289,6 +289,40 @@ export function IconRoute({ size, ...rest }: IconProps) {
   )
 }
 
+export function IconDownload({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
+export function IconGraph({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="4" cy="20" r="1.5" fill="currentColor" />
+      <circle cx="12" cy="8" r="1.5" fill="currentColor" />
+      <circle cx="20" cy="14" r="1.5" fill="currentColor" />
+      <path d="M4 20L12 8" />
+      <path d="M12 8L20 14" />
+      <path d="M4 20L20 14" />
+    </svg>
+  )
+}
+
+export function IconDatabase({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      <path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6" />
+    </svg>
+  )
+}
+
+/** CPU/芯片 */
 export function IconCpu({ size, ...rest }: IconProps) {
   return (
     <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -305,3 +339,33 @@ export function IconCpu({ size, ...rest }: IconProps) {
     </svg>
   )
 }
+
+/** 活动/脉冲 */
+export function IconActivity({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  )
+}
+
+/** 时钟 */
+export function IconClock({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  )
+}
+
+/** X/关闭 */
+export function IconX({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+

@@ -18,15 +18,16 @@ import ITOTPanel from './components/ITOTPanel'
 import TProcessorPanel from './components/TProcessorPanel'
 import TShieldPanel from './components/TShieldPanel'
 import AEGISPanel from './components/AEGISPanel'
+import HypergraphPanel from './components/HypergraphPanel'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useToast } from './components/Toast'
 import type { AppMode, ChatEMLState } from './types'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
-// 默认自动加载的 EML 文件（OwnThink 蒸馏知识库）
-const DEFAULT_EML_URL = '/ownthink_sample.eml'
-const DEFAULT_EML_NAME = 'ownthink_sample.eml'
+// 默认自动加载的 EML 文件（设为空字符串则禁用自动加载，改由聊天时直接查 DB）
+const DEFAULT_EML_URL = ''
+const DEFAULT_EML_NAME = ''
 
 export default function App() {
   const { error: toastError } = useToast()
@@ -215,6 +216,12 @@ export default function App() {
         return (
           <ErrorBoundary>
             <AEGISPanel />
+          </ErrorBoundary>
+        )
+      case 'hypergraph':
+        return (
+          <ErrorBoundary>
+            <HypergraphPanel />
           </ErrorBoundary>
         )
       case 'docs':

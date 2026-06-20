@@ -5,7 +5,7 @@ import type { AppMode, ChatSession } from '../types'
 import {
   IconChat, IconKey, IconPlus, IconSparkles, IconTrash, IconEdit,
   IconDashboard, IconGlobe, IconAuditLog, IconBrain, IconMemory,
-  IconShield, IconLayers, IconFlame, IconRoute, IconCpu
+  IconShield, IconLayers, IconFlame, IconRoute, IconCpu, IconGraph
 } from './icons'
 import { SkeletonText } from './Skeleton'
 
@@ -49,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'fde', label: 'FDE 本体', icon: <IconFlame size={17} />, section: 'engine' },
   { id: 'dual', label: '双时间维度', icon: <IconRoute size={17} />, section: 'engine' },
   { id: 'itot', label: 'IT-OT 翻译', icon: <IconGlobe size={17} />, section: 'engine' },
+  { id: 'hypergraph', label: '超图数据库', icon: <IconGraph size={17} />, section: 'engine' },
   { id: 'docs', label: '技术文档', icon: <IconFile size={17} />, section: 'info' },
 ]
 

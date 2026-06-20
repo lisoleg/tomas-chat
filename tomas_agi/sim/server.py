@@ -20,6 +20,7 @@ from models import (
     DB_PATH, get_session,
     CorpusEntry, ConflictDecision, ChatSession,
     ApiKey, KnowledgeItem, KnowledgeTriple, Setting,
+    Vertex, HyperEdge, HyperEdgeNode, MatroidCircuit,
 )
 
 app = Flask(__name__)
@@ -511,7 +512,57 @@ def get_graph():
         session.close()
 
 
-# ==================== 健康检查 ====================
+@app.route("/api/knowledge/search")
+def api_knowledge_search():
+    """
+    自由文本搜索知识图谱三元组（聊天时直接查 DB）。
+    高性能版：只做 subject 精确匹配（索引等值查询，<0.2s）。
+    LIKE 前缀匹配已移除（101M 行上全表扫描太慢）。
+    """
+    q = request.args.get("q", "").strip()
+    limit = min(int(request.args.get("limit", 20)), 100)
+    min_i_weight = float(request.args.get("min_i_weight", 1.0))
+
+    if not q:
+        return jsonify({"success": True, "data": [], "total": 0, "query": q})
+
+    import re
+    tokens = [t for t in re.split(r"[\s,，。、?？!！;；:：()（）\[\]【】]+", q) if t and len(t) >= 2]
+    if not tokens:
+        tokens = [q]
+
+    session = get_session()
+    try:
+        from sqlalchemy import text
+        all_rows = []
+        seen_ids = set()
+
+        for token in tokens[:5]:
+            sql = text(
+                "SELECT id, subject, predicate, object, i_weight "
+                "FROM knowledge_triples WHERE subject = :subj AND i_weight >= :w LIMIT :lim"
+            )
+            for row in session.execute(sql, {"subj": token, "w": min_i_weight, "lim": limit}).fetchall():
+                if row[0] not in seen_ids:
+                    seen_ids.add(row[0])
+                    all_rows.append({
+                        "id": row[0], "subject": row[1],
+                        "predicate": row[2], "object": row[3],
+                        "i_weight": round(row[4], 4) if row[4] else 1.0,
+                    })
+            if len(all_rows) >= limit:
+                break
+
+        all_rows.sort(key=lambda x: x["i_weight"], reverse=True)
+        data = all_rows[:limit]
+        return jsonify({
+            "success": True, "data": data, "total": len(data),
+            "query": q, "tokens": tokens, "limit": limit,
+            "search_mode": "subject_exact_match_only",
+        })
+    finally:
+        session.close()
+
 
 @app.route("/api/health")
 def health():
@@ -1999,6 +2050,537 @@ def api_afs_psi_acl():
             "success": True,
             "data": {"allowed": ok, "reason": reason}
         })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+# ==================== 超图查询 API ====================
+# 基于 TOMAS EML 超图五元组: H = (V, E, ℑ, κ, Asym)
+# 参考: eml_dimred/hyperedge.py, eml_dimred/matroid.py
+
+@app.route("/api/hypergraph/vertices")
+def api_hg_vertices():
+    """查询顶点 (Vertex) 列表"""
+    q = request.args.get("q", "").strip()
+    limit = min(int(request.args.get("limit", 50)), 200)
+    session = get_session()
+    try:
+        query = session.query(Vertex)
+        if q:
+            query = query.filter(Vertex.concept.like(f"%{q}%"))
+        rows = query.order_by(Vertex.i_val.desc()).limit(limit).all()
+        return jsonify({
+            "success": True,
+            "data": [
+                {
+                    "vid": r.vid,
+                    "concept": r.concept,
+                    "i_val": r.i_val,
+                    "degree_class": r.degree_class,
+                }
+                for r in rows
+            ],
+            "total": query.count(),
+        })
+    finally:
+        session.close()
+
+
+@app.route("/api/hypergraph/hyperedges")
+def api_hg_hyperedges():
+    """查询超边 (HyperEdge) 列表"""
+    vid = request.args.get("vid", type=int)
+    limit = min(int(request.args.get("limit", 50)), 200)
+    session = get_session()
+    try:
+        if vid:
+            # 查找包含此顶点的所有超边
+            eids = session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).limit(limit).all()
+            eids = [e[0] for e in eids]
+            query = session.query(HyperEdge).filter(HyperEdge.eid.in_(eids))
+        else:
+            query = session.query(HyperEdge)
+
+        rows = query.order_by(HyperEdge.i_val.desc()).limit(limit).all()
+        return jsonify({
+            "success": True,
+            "data": [
+                {
+                    "eid": r.eid,
+                    "arity": r.arity,
+                    "nodes": json.loads(r.nodes) if r.nodes else [],
+                    "i_val": r.i_val,
+                    "asym": r.asym,
+                    "edge_type": r.edge_type,
+                }
+                for r in rows
+            ],
+            "total": query.count(),
+        })
+    finally:
+        session.close()
+
+
+@app.route("/api/hypergraph/subgraph")
+def api_hg_subgraph():
+    """
+    获取以某顶点为中心的子图 (k-hop)
+    用于聊天时获取相关知识的超图上下文
+    """
+    concept = request.args.get("concept", "").strip()
+    k = min(int(request.args.get("k", 2)), 3)
+    limit = min(int(request.args.get("limit", 50)), 200)
+    session = get_session()
+    try:
+        # 1. 找到中心顶点
+        vertex = session.query(Vertex).filter(Vertex.concept == concept).first()
+        if not vertex:
+            # 模糊匹配
+            vertex = session.query(Vertex).filter(Vertex.concept.like(f"{concept}%")).first()
+        if not vertex:
+            return jsonify({"success": True, "data": {"vertices": [], "edges": []}, "total": 0})
+
+        # 2. k-hop 展开
+        visited_vids = {vertex.vid}
+        visited_eids = set()
+        frontier = {vertex.vid}
+
+        for hop in range(k):
+            if not frontier:
+                break
+            next_frontier = set()
+            for vid in frontier:
+                eids = session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).limit(limit).all()
+                for (eid,) in eids:
+                    if eid in visited_eids:
+                        continue
+                    visited_eids.add(eid)
+                    edge = session.query(HyperEdge).filter(HyperEdge.eid == eid).first()
+                    if edge:
+                        nodes = json.loads(edge.nodes)
+                        for n in nodes:
+                            if n not in visited_vids:
+                                visited_vids.add(n)
+                                next_frontier.add(n)
+            frontier = next_frontier
+
+        # 3. 加载数据
+        vertices = session.query(Vertex).filter(Vertex.vid.in_(list(visited_vids))).all()
+        edges = session.query(HyperEdge).filter(HyperEdge.eid.in_(list(visited_eids))).all()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "vertices": [{"vid": v.vid, "concept": v.concept, "i_val": v.i_val} for v in vertices],
+                "edges": [{"eid": e.eid, "nodes": json.loads(e.nodes), "i_val": e.i_val, "edge_type": e.edge_type} for e in edges],
+            },
+            "total": {"vertices": len(vertices), "edges": len(edges)},
+            "center": {"vid": vertex.vid, "concept": vertex.concept},
+        })
+    finally:
+        session.close()
+
+
+@app.route("/api/hypergraph/matroid-base", methods=["POST"])
+def api_hg_matroid_base():
+    """
+    拟阵贪心剪枝 — 计算最大权独立集基 B
+    输入: {vids: [vid1, vid2, ...]} 或 {eids: [eid1, ...]}
+    输出: 剪枝后的超边集合 (基 B)
+    """
+    try:
+        from eml_dimred.hyperedge import HypEdge as EMLHypEdge, EMLVertex as EMLEVertex
+        from eml_dimred.matroid import matroid_prune
+
+        data = request.get_json(silent=True) or {}
+        session = get_session()
+        try:
+            if "vids" in data:
+                vids = data["vids"]
+                # 找到包含这些顶点的所有超边
+                eids = set()
+                for vid in vids:
+                    for (eid,) in session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid):
+                        eids.add(eid)
+            elif "eids" in data:
+                eids = set(data["eids"])
+            else:
+                return jsonify({"success": False, "error": "need vids or eids"}), 400
+
+            # 加载到内存
+            edges = []
+            for eid in eids:
+                e = session.query(HyperEdge).filter(HyperEdge.eid == eid).first()
+                if not e:
+                    continue
+                nodes = json.loads(e.nodes)
+                edges.append(EMLHypEdge(
+                    nodes=tuple(nodes),
+                    eid=e.eid,
+                    i_val=e.i_val,
+                    asym=e.asym,
+                    weight=e.weight,
+                ))
+
+            vertices = []
+            vertex_ids = set()
+            for e in edges:
+                vertex_ids.update(e.nodes)
+            for vid in vertex_ids:
+                v = session.query(Vertex).filter(Vertex.vid == vid).first()
+                if v:
+                    vertices.append(EMLEVertex(
+                        vid=v.vid,
+                        concept=v.concept,
+                        phi=[v.phi_b0, v.phi_b1, v.phi_b2, v.phi_b3,
+                             v.phi_b4, v.phi_b5, v.phi_b6, v.phi_b7],
+                        i_val=v.i_val,
+                    ))
+
+            # 拟阵剪枝
+            base, stats = matroid_prune(edges, vertices, verbose=False)
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "base": [{"eid": e.eid, "i_val": e.i_val, "nodes": list(e.nodes)} for e in base],
+                    "stats": stats,
+                }
+            })
+        finally:
+            session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== 超图 v2.0 API (2026-06-19) ====================
+# 新增四个端点: HyperIndex v2.0 k-hop / UnionFind 拟阵 / 分布式查询 / EML v2.0 导出
+
+@app.route("/api/hypergraph/k-hop", methods=["POST"])
+def api_hg_khop_v2():
+    """
+    HyperIndex v2.0 DB-backed k-hop 子图查询
+    使用 LRU 缓存 + 批量预取，N+1 查询优化
+
+    输入 JSON: {
+        seeds: ["概念1", "概念2", ...],   # 种子概念列表
+        k: 2,                              # 跳数 (默认2, 最大5)
+        limit: 50                          # 每跳边数上限 (默认50)
+    }
+    """
+    try:
+        from eml_dimred.hyperindex import HyperIndex
+        data = request.get_json(silent=True) or {}
+        seeds = data.get("seeds", [])
+        k = min(int(data.get("k", 2)), 5)
+        limit = min(int(data.get("limit", 50)), 200)
+
+        if not seeds:
+            return jsonify({"success": False, "error": "need seeds (concept names)"}), 400
+
+        hi = HyperIndex(cache_size=min(5000, limit * k * 10))
+        try:
+            vertices, edges = hi.get_subgraph(seeds, k=k)
+            stats = hi.query_stats()
+            subgraph_data = {
+                "vertices": [
+                    {"vid": v.vid, "concept": v.concept, "i_val": v.i_val}
+                    for v in vertices
+                ],
+                "edges": [
+                    {"eid": e.eid, "nodes": list(e.nodes), "i_val": e.i_val,
+                     "weight": e.weight, "edge_type": getattr(e, 'edge_type', 'generic')}
+                    for e in edges
+                ],
+            }
+            return jsonify({
+                "success": True,
+                "data": subgraph_data,
+                "total": {"vertices": len(vertices), "edges": len(edges)},
+                "stats": stats,
+                "query": {"seeds": seeds, "k": k},
+            })
+        finally:
+            hi.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/hypergraph/matroid-unionfind", methods=["POST"])
+def api_hg_matroid_unionfind():
+    """
+    Union-Find 拟阵回路检测 (O(|E|·α(|V|)))
+    支持 MUS / Paradox 两种回路类型
+
+    输入 JSON: {
+        vids: [vid1, vid2, ...],     # 顶点范围 或
+        eids: [eid1, ...],           # 超边范围
+        detect_mus: true             # 是否检测 MUS 回路 (默认 true)
+    }
+    """
+    try:
+        from eml_dimred.hyperedge import HypEdge as EMLHypEdge
+        from eml_dimred.unionfind_matroid import matroid_prune_unionfind
+
+        data = request.get_json(silent=True) or {}
+        detect_mus = data.get("detect_mus", True)
+        session = get_session()
+        try:
+            # 收集 eids
+            if "vids" in data:
+                eids = set()
+                for vid in data["vids"]:
+                    for (eid,) in session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).all():
+                        eids.add(eid)
+            elif "eids" in data:
+                eids = set(data["eids"])
+            else:
+                return jsonify({"success": False, "error": "need vids or eids"}), 400
+
+            # 加载超边
+            edges = []
+            for eid in eids:
+                e = session.query(HyperEdge).filter(HyperEdge.eid == eid).first()
+                if not e:
+                    continue
+                nodes = json.loads(e.nodes)
+                edges.append(EMLHypEdge(
+                    nodes=tuple(nodes),
+                    eid=e.eid,
+                    i_val=e.i_val,
+                    asym=e.asym,
+                    weight=e.weight,
+                    is_mus_capable=(e.asym != 0),  # asym ≠ 0 → MUS-capable
+                ))
+
+            # Union-Find 剪枝
+            base, stats = matroid_prune_unionfind(edges, detect_mus=detect_mus)
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "base": [{"eid": e.eid, "i_val": e.i_val, "nodes": list(e.nodes)} for e in base],
+                    "stats": stats,
+                },
+                "algorithm": "UnionFind (path compression + union by rank)",
+                "complexity": f"O(|E|·α(|V|)) for |E|={stats.get('total', '?')}",
+            })
+        finally:
+            session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/hypergraph/distributed/query", methods=["POST"])
+def api_hg_distributed_query():
+    """
+    分布式超图查询 — 基于 ChainDB RelationIndex 技术
+    跨 shard 查询 + 结果合并
+
+    输入 JSON: {
+        seeds: ["概念1", ...],        # 种子概念
+        k: 2,                          # 跳数
+        shard_paths: ["/path/shard_0.db", ...]  # 分片路径列表 (可选)
+    }
+    注意: 需要先运行 shard_knowledge_triples() 创建分片，否则回退到主数据库查询
+    """
+    try:
+        import os as _os
+        import glob as _glob
+        data = request.get_json(silent=True) or {}
+        seeds = data.get("seeds", [])
+        k = min(int(data.get("k", 2)), 5)
+
+        if not seeds:
+            return jsonify({"success": False, "error": "need seeds"}), 400
+
+        # 自动发现分片文件
+        shard_paths = data.get("shard_paths", [])
+        if not shard_paths:
+            shard_pattern = _os.path.join(_os.path.dirname(DB_PATH), "shard_*.db")
+            shard_paths = sorted(_glob.glob(shard_pattern))
+
+        if shard_paths and len(shard_paths) > 0:
+            # 分布式查询
+            from eml_dimred.chaindb_bridge import DistributedHyperIndex
+            shard_configs = [(p, i) for i, p in enumerate(shard_paths)]
+            dhi = DistributedHyperIndex(shard_configs)
+            try:
+                vertices, edges = dhi.get_subgraph(seeds, k=k)
+                dist_stats = dhi.stats()
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "vertices": [{"vid": v.vid, "concept": v.concept, "i_val": v.i_val} for v in vertices],
+                        "edges": [{"eid": e.eid, "nodes": list(e.nodes), "i_val": e.i_val} for e in edges],
+                    },
+                    "total": {"vertices": len(vertices), "edges": len(edges)},
+                    "distributed_stats": dist_stats,
+                    "query": {"seeds": seeds, "k": k, "shards": len(shard_paths)},
+                })
+            finally:
+                dhi.close()
+        else:
+            # 回退到主数据库 k-hop 查询
+            from eml_dimred.hyperindex import HyperIndex
+            hi = HyperIndex()
+            try:
+                vertices, edges = hi.get_subgraph(seeds, k=k)
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "vertices": [{"vid": v.vid, "concept": v.concept, "i_val": v.i_val} for v in vertices],
+                        "edges": [{"eid": e.eid, "nodes": list(e.nodes), "i_val": e.i_val} for e in edges],
+                    },
+                    "total": {"vertices": len(vertices), "edges": len(edges)},
+                    "fallback": "No shard files found; used main database",
+                    "query": {"seeds": seeds, "k": k},
+                })
+            finally:
+                hi.close()
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route("/api/hypergraph/distributed/shards", methods=["GET"])
+def api_hg_shards_info():
+    """分布式 shard 信息 + 主数据库统计"""
+    import glob as _glob
+    import os as _os
+    try:
+        shard_pattern = _os.path.join(_os.path.dirname(DB_PATH), "shard_*.db")
+        shard_paths = sorted(_glob.glob(shard_pattern))
+
+        if shard_paths:
+            from eml_dimred.chaindb_bridge import DistributedHyperIndex
+            shard_configs = [(p, i) for i, p in enumerate(shard_paths)]
+            dhi = DistributedHyperIndex(shard_configs)
+            try:
+                dist_stats = dhi.stats()
+                return jsonify({
+                    "success": True,
+                    "data": dist_stats,
+                    "mode": "distributed",
+                })
+            finally:
+                dhi.close()
+        else:
+            # 无分片: 返回主数据库统计
+            session = get_session()
+            try:
+                v_count = session.query(func.count(Vertex.vid)).scalar()
+                e_count = session.query(func.count(HyperEdge.eid)).scalar()
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "total_vertices": v_count,
+                        "total_edges": e_count,
+                        "num_shards": 0,
+                        "shards": {},
+                    },
+                    "mode": "single (no shards)",
+                    "hint": "Run shard_knowledge_triples() to create distributed shards",
+                })
+            finally:
+                session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/hypergraph/export-eml-v2", methods=["POST"])
+def api_hg_export_eml_v2():
+    """
+    导出子图为 EML v2.0 n元超边二进制格式
+    支持下载 .eml2 文件
+
+    输入 JSON: {
+        concept: "量子力学",      # 中心概念 (必填)
+        k: 2,                     # k-hop 展开 (默认2)
+        output_path: null         # null = 返回临时文件下载链接
+    }
+    """
+    import tempfile
+    import os as _os
+    try:
+        from eml_dimred.hyperedge import HypEdge as EMLHypEdge, EMLVertex as EMLEVertex
+        from eml_dimred.eml_v2 import save_eml_v2
+
+        data = request.get_json(silent=True) or {}
+        concept = data.get("concept", "").strip()
+        k = min(int(data.get("k", 2)), 4)
+
+        if not concept:
+            return jsonify({"success": False, "error": "need concept"}), 400
+
+        session = get_session()
+        try:
+            # k-hop 收集 (复用现有逻辑)
+            vertex = session.query(Vertex).filter(Vertex.concept == concept).first()
+            if not vertex:
+                vertex = session.query(Vertex).filter(Vertex.concept.like(f"{concept}%")).first()
+            if not vertex:
+                return jsonify({"success": False, "error": f"concept not found: {concept}"}), 404
+
+            visited_vids = {vertex.vid}
+            visited_eids = set()
+            frontier = {vertex.vid}
+
+            for hop in range(k):
+                if not frontier:
+                    break
+                next_frontier = set()
+                for vid in frontier:
+                    eids = session.query(HyperEdgeNode.eid).filter(HyperEdgeNode.vid == vid).limit(200).all()
+                    for (eid,) in eids:
+                        if eid in visited_eids:
+                            continue
+                        visited_eids.add(eid)
+                        edge = session.query(HyperEdge).filter(HyperEdge.eid == eid).first()
+                        if edge:
+                            nodes = json.loads(edge.nodes)
+                            for n in nodes:
+                                if n not in visited_vids:
+                                    visited_vids.add(n)
+                                    next_frontier.add(n)
+                frontier = next_frontier
+
+            # 构建 EML 数据
+            eml_vertices = []
+            for v in session.query(Vertex).filter(Vertex.vid.in_(list(visited_vids))).all():
+                eml_vertices.append(EMLEVertex(
+                    vid=v.vid, concept=v.concept,
+                    phi=[v.phi_b0, v.phi_b1, v.phi_b2, v.phi_b3,
+                         v.phi_b4, v.phi_b5, v.phi_b6, v.phi_b7],
+                    i_val=v.i_val,
+                ))
+
+            eml_edges = []
+            for e in session.query(HyperEdge).filter(HyperEdge.eid.in_(list(visited_eids))).all():
+                nodes = json.loads(e.nodes)
+                eml_edges.append(EMLHypEdge(
+                    nodes=tuple(nodes), eid=e.eid,
+                    i_val=e.i_val, asym=e.asym, weight=e.weight,
+                ))
+
+            # 写入临时文件
+            tmp = tempfile.NamedTemporaryFile(suffix=".eml2", delete=False)
+            save_eml_v2(tmp.name, eml_vertices, eml_edges,
+                        source=f"TOMAS/{concept}", k=k)
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "file": tmp.name,
+                    "vertices": len(eml_vertices),
+                    "edges": len(eml_edges),
+                    "format": "EML v2.0 (n-ary hyperedge)",
+                    "size_bytes": _os.path.getsize(tmp.name),
+                }
+            })
+        finally:
+            session.close()
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

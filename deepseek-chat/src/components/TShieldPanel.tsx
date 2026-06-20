@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconShield, IconActivity, IconBrain, IconCpu } from './icons';
 
 // ── Types ─────────────────────────────────────
@@ -324,7 +324,7 @@ export default function TShieldPanel() {
                   <p className="text-[9px] text-textSecondary mt-0.5">内部语义 → 外部行动</p>
                 </div>
                 <div className="bg-chatBg rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-accent">{stats.avgIScene.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-accent">{stats?.avgIScene.toFixed(2)}</p>
                   <p className="text-[9px] text-textSecondary mt-0.5">当前 ℐ-Scene</p>
                 </div>
               </div>
@@ -341,14 +341,14 @@ export default function TShieldPanel() {
                   <div className="w-full h-2 bg-chatBg rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        stats.avgIScene > 0.7 ? 'bg-emerald-400' : stats.avgIScene > 0.3 ? 'bg-amber-400' : 'bg-red-400'
+                        (stats?.avgIScene ?? 0) > 0.7 ? 'bg-emerald-400' : (stats?.avgIScene ?? 0) > 0.3 ? 'bg-amber-400' : 'bg-red-400'
                       }`}
-                      style={{ width: `${stats.avgIScene * 100}%` }}
+                      style={{ width: `${(stats?.avgIScene ?? 0) * 100}%` }}
                     />
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-textPrimary">{stats.avgIScene.toFixed(2)}</p>
+                  <p className="text-sm font-bold text-textPrimary">{stats?.avgIScene.toFixed(2)}</p>
                   <p className="text-[9px] text-textSecondary">均值 (θ_dead=0.15)</p>
                 </div>
               </div>
