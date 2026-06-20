@@ -520,64 +520,107 @@ def get_knowledge_stats():
     """
     知识图谱真实聚合统计（全库级别，不受分页限制）。
     前端统计卡片专用，返回概念总数、关系总数、ℐ均值等。
-    101M 行表上 COUNT(DISTINCT) 较慢，使用缓存策略：
-      - 首次查询执行真实 SQL（可能需 1-2 分钟）
-      - 结果缓存在内存中，5 分钟内重复请求直接返回
+
+    性能策略：
+      - 优先读取 D:/tomas-data/knowledge_stats.json（毫秒级）
+      - 文件不存在或超过 5 分钟时，触发后台刷新
+      - 刷新用原生 SQL（COUNT(*) 为 O(1)，COUNT(DISTINCT) 需全表扫描）
+      - 首次刷新可能需 1-3 分钟，期间返回旧数据或近似值
     """
     import time as _time
+    import json as _json
+    import os as _os
+    import threading
 
-    # ── 内存缓存（进程级，Flask 单线程/多线程均有效）──
-    _cache = getattr(get_knowledge_stats, "_cache", None)
-    _cache_ts = getattr(get_knowledge_stats, "_cache_ts", 0)
+    STATS_FILE = "D:/tomas-data/knowledge_stats.json"
     CACHE_TTL = 300  # 5 分钟
 
-    if _cache and (_time.time() - _cache_ts) < CACHE_TTL:
-        return jsonify({"success": True, "data": _cache, "cached": True})
+    def _read_cached():
+        """读取文件缓存，返回 (data, age_seconds) 或 (None, -1)"""
+        if not _os.path.exists(STATS_FILE):
+            return None, -1
+        try:
+            with open(STATS_FILE, "r", encoding="utf-8") as f:
+                cached = _json.load(f)
+            age = _time.time() - cached.get("_generated_at", 0)
+            return cached, age
+        except Exception:
+            return None, -1
 
-    session = get_session()
-    try:
-        from sqlalchemy import func as sa_func
+    def _write_cached(data):
+        """写入文件缓存"""
+        try:
+            data["_generated_at"] = _time.time()
+            data["_source"] = "knowledge_triples"
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                _json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
 
-        # 三元组总数
-        triple_count = session.query(KnowledgeTriple).count()
+    def _refresh_stats():
+        """用原生 SQL 刷新统计（可在后台线程运行）"""
+        import sqlite3 as _sqlite3
+        try:
+            conn = _sqlite3.connect(DB_PATH, timeout=30)
+            cur = conn.cursor()
 
-        # 唯一概念数（subject DISTINCT）
-        concept_count = session.query(
-            sa_func.count(sa_func.distinct(KnowledgeTriple.subject))
-        ).scalar()
+            # triple_count: SQLite COUNT(*) 无 WHERE 为 O(1)
+            cur.execute("SELECT COUNT(*) FROM knowledge_triples")
+            triple_count = cur.fetchone()[0]
 
-        # ℐ 均值
-        avg_i = session.query(
-            sa_func.avg(KnowledgeTriple.i_weight)
-        ).scalar() or 0.0
+            # concept_count: DISTINCT subject — 全表扫描，慢
+            cur.execute("SELECT COUNT(DISTINCT subject) FROM knowledge_triples")
+            concept_count = cur.fetchone()[0]
 
-        # 唯一谓词数
-        predicate_count = session.query(
-            sa_func.count(sa_func.distinct(KnowledgeTriple.predicate))
-        ).scalar()
+            # predicate_count: DISTINCT predicate
+            cur.execute("SELECT COUNT(DISTINCT predicate) FROM knowledge_triples")
+            predicate_count = cur.fetchone()[0]
 
-        stats = {
-            "tripleCount": triple_count,
-            "conceptCount": concept_count,
-            "predicateCount": predicate_count,
-            "avgIWeight": round(float(avg_i), 4),
-            "source": "knowledge_triples",
-            "dbPath": DB_PATH,
-        }
+            # avg_i_weight: AVG — 全表扫描
+            cur.execute("SELECT AVG(i_weight) FROM knowledge_triples")
+            avg_i = cur.fetchone()[0] or 0.0
 
-        # 写入缓存
-        get_knowledge_stats._cache = stats
-        get_knowledge_stats._cache_ts = _time.time()
+            conn.close()
 
+            stats = {
+                "tripleCount": triple_count,
+                "conceptCount": concept_count,
+                "predicateCount": predicate_count,
+                "avgIWeight": round(float(avg_i), 4),
+                "dbPath": DB_PATH,
+            }
+            _write_cached(stats)
+            return stats
+        except Exception as e:
+            print(f"[knowledge_stats] 刷新失败: {e}")
+            return None
+
+    # ── 主逻辑 ──
+    cached_data, age = _read_cached()
+
+    if cached_data and age < CACHE_TTL:
+        # 缓存有效，直接返回
+        cached_data.pop("_generated_at", None)
+        cached_data.pop("_source", None)
+        return jsonify({"success": True, "data": cached_data, "cached": True})
+
+    if cached_data and age >= CACHE_TTL:
+        # 缓存过期，后台刷新，同时返回旧数据
+        threading.Thread(target=_refresh_stats, daemon=True).start()
+        cached_data.pop("_generated_at", None)
+        cached_data.pop("_source", None)
+        return jsonify({"success": True, "data": cached_data, "cached": True, "refreshing": True})
+
+    # 无缓存，同步刷新（首次）
+    stats = _refresh_stats()
+    if stats:
         return jsonify({"success": True, "data": stats, "cached": False})
-    except Exception as e:
+    else:
         return jsonify({
             "success": False,
-            "error": str(e),
+            "error": "无法读取统计信息",
             "data": {"tripleCount": 0, "conceptCount": 0, "predicateCount": 0, "avgIWeight": 0},
         })
-    finally:
-        session.close()
 
 
 @app.route("/api/knowledge/search")
