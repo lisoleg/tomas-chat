@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-727%20PASS-brightgreen.svg)](./tests/)
 [![CUDA](https://img.shields.io/badge/CUDA-supported-success.svg)](./kernel/)
 [![FPGA](https://img.shields.io/badge/FPGA-verified-blueviolet.svg)](./rtl/)
-[![DB](https://img.shields.io/badge/knowledge_triples-86M+-blue.svg)]()
+[![DB](https://img.shields.io/badge/knowledge_triples-101M+-blue.svg)]()
 
 <p align="center">
   <br/>
@@ -80,6 +80,10 @@ graph TD
 - 🌐 **G_ego 双向算子** — Afferent/Efferent DMN + NASGA 八元数传播 + T-Shield 监控
 - 📊 **评估框架** — ARC-AGI-3（64×64 网格/RHAE 评分）、SWE-bench Lite（300 实例）、GAIA 数据集获取
 - 🖥️ **Dashboard API** — Flask 56 端点，12 模型路由器，语义防火墙，DIKWP 五层映射，Three.js 3D 世界模型
+- 🗄️ **HyperIndex v2.0** — DB-backed k-hop 子图按需加载，OrderedDict LRU 缓存 + 批量预取，消除 N+1 查询，支持 100M+ 三元组内存高效推理
+- 🔬 **UnionFind 拟阵回路检测** — O(|E|·α(|V|)) 复杂度，路径压缩 + 按秩合并，较原 O(|E|²) 加速 100-1000×，实测 87.5% 压缩率
+- 🌐 **ChainDB 分布式超图** — 概念哈希分片 + POP 共识协议，HyperShard 架构支持跨分片查询合并，RelationIndex 7 种关系类型
+- 📦 **EML v2.0 格式** — 支持 n 元超边二进制编码（v1.0 仅二元边），向后兼容，可变长度边结构，96B 头部 + 变长边体
 
 ---
 
