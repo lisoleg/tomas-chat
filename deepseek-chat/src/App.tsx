@@ -19,6 +19,7 @@ import TProcessorPanel from './components/TProcessorPanel'
 import TShieldPanel from './components/TShieldPanel'
 import AEGISPanel from './components/AEGISPanel'
 import HypergraphPanel from './components/HypergraphPanel'
+import V2Panel from './components/V2Panel'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useToast } from './components/Toast'
@@ -222,6 +223,12 @@ export default function App() {
         return (
           <ErrorBoundary>
             <HypergraphPanel />
+          </ErrorBoundary>
+        )
+      case 'v2':
+        return (
+          <ErrorBoundary>
+            <V2Panel />
           </ErrorBoundary>
         )
       case 'docs':

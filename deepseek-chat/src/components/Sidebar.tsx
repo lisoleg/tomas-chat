@@ -50,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dual', label: '双时间维度', icon: <IconRoute size={17} />, section: 'engine' },
   { id: 'itot', label: 'IT-OT 翻译', icon: <IconGlobe size={17} />, section: 'engine' },
   { id: 'hypergraph', label: '超图数据库', icon: <IconGraph size={17} />, section: 'engine' },
+  { id: 'v2', label: 'V2 升级', icon: <IconSparkles size={17} />, section: 'engine' },
   { id: 'docs', label: '技术文档', icon: <IconFile size={17} />, section: 'info' },
 ]
 
