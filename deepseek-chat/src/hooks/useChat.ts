@@ -647,12 +647,38 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         // EML 路由未处理（无匹配概念），回退到普通聊天
       }
 
-      // 5) 普通聊天：仅发当前问题 + 简洁系统指令，不堆历史消息
+      // 5) 普通聊天：尝试从 DB 获取知识上下文，再发给 LLM
+      //    先查 SQLite 知识库（OwnThink ~101M 条），有结果则注入 system 消息
+      let dbContext = ''
+      let dbTotal = 0
+      try {
+        // 5s 超时，避免后端慢查询时 UI 卡住
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 5000)
+        const resp = await fetch(
+          `/api/knowledge/search?q=${encodeURIComponent(trimmed)}&limit=20`,
+          { signal: controller.signal }
+        )
+        clearTimeout(timer)
+        const json = await resp.json()
+        if (json.success && json.data?.length > 0) {
+          dbTotal = json.total ?? json.data.length
+          const triples = json.data as Array<{ subject: string; predicate: string; object: string; i_weight: number }>
+          dbContext = triples.map(t => `${t.subject} ${t.predicate} ${t.object}`).join('\n')
+        }
+      } catch (e: any) {
+        // 后端未启动、超时或接口报错，忽略，继续无上下文聊天
+        if (e.name === 'AbortError') {
+          console.warn('[useChat] DB 知识搜索超时（5s），跳过知识注入')
+        }
+      }
+
+      const systemContent = dbContext
+        ? `你是 TOMAS/太极OS 的知识助手。请严格基于下方"知识图谱上下文"回答问题。\n\n知识图谱上下文（来自 OwnThink 知识库，共 ${dbTotal} 条相关记录，仅展示前 ${dbContext.split('\n').length} 条）：\n${dbContext}\n\n规则：\n1. 优先基于上方知识图谱上下文回答\n2. 如果上下文信息不足，明确说明"知识库中未找到相关信息"，再基于你的知识补充\n3. 用中文回答，简洁准确\n4. 不要编造知识库中不存在的事实`
+        : '你是 DeepSeek，一个知识渊博的 AI 助手。请直接、准确地回答用户的问题。用中文回复。'
+
       const messages: Array<{ role: MessageRole; content: string }> = [
-        {
-          role: 'system',
-          content: '你是 DeepSeek，一个知识渊博的 AI 助手。请直接、准确地回答用户的问题。用中文回复。'
-        },
+        { role: 'system', content: systemContent },
         { role: 'user', content: trimmed }
       ]
 
