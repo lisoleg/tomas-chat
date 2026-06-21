@@ -61,3 +61,8 @@ nul
 fix_tshield_indent.py
 rebuild_tshield.py
 test_hyperindex.py
+
+# Versioned iteration scripts (historical variants)
+tomas_agi/sim/compute_i_weight_v*.py
+tomas_agi/sim/eml_semzip_v*.py
+tomas_agi/sim/eml_semzip_enhanced.py
