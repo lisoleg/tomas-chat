@@ -96,19 +96,18 @@ def compute_i_weight(
         conn.execute("PRAGMA busy_timeout=300000")   # 5 分钟
         conn.execute("PRAGMA cache_size=-500000")      # 500MB 缓存
         conn.execute("PRAGMA temp_store=0")           # 临时表用磁盘
-        # 禁用 autocommit，手动控制事务
+        # 禁用 autocommit，手动控制事务（事务在内层按需开启）
         conn.isolation_level = None
-        conn.execute("BEGIN IMMEDIATE")  # 立即获取写锁（避免后续锁冲突）
 
-        # 1. 统计总行数和待计算行数
+        # 1. 统计总行数和待计算行数（读操作，不需要事务）
         start = time.time()
         total_count = _execute_with_retry(
             conn, "SELECT COUNT(*) FROM knowledge_triples", None
         ).fetchone()[0]
         pending_count = _execute_with_retry(
             conn,
-            "SELECT COUNT(*) FROM knowledge_triples WHERE i_weight = ?",
-            (DEFAULT_I_WEIGHT,)
+            "SELECT COUNT(*) FROM knowledge_triples WHERE ABS(i_weight - 1.0) < 0.0001",
+            ()
         ).fetchone()[0]
 
         print(f"  总行数:        {total_count:>12,}")
@@ -118,7 +117,7 @@ def compute_i_weight(
 
         if pending_count == 0:
             print("  ✅ 所有行已有 i_weight，无需计算")
-            conn.execute("ROLLBACK")  # 释放 BEGIN IMMEDIATE 的锁
+            conn.close()
             return
 
         if dry_run:
@@ -126,16 +125,16 @@ def compute_i_weight(
             print("  [DRY RUN] 扫描前 10 个 subject 的频率...")
             cur = _execute_with_retry(
                 conn,
-                "SELECT subject, COUNT(*) as cnt FROM knowledge_triples "
-                "WHERE i_weight = ? GROUP BY subject ORDER BY subject LIMIT 10",
-                (DEFAULT_I_WEIGHT,)
+            "SELECT subject, COUNT(*) as cnt FROM knowledge_triples "
+            "WHERE ABS(i_weight - 1.0) < 0.0001 GROUP BY subject ORDER BY subject LIMIT 10",
+            ()
             )
             for row in cur:
                 s, cnt = row[0], row[1]
                 iw = 1.0 + math.log(1.0 + cnt) / 10.0
                 print(f"    {s[:40]:40s} freq={cnt:>6}  i_weight={iw:.4f}")
             print(f"  [DRY RUN] 结束（未实际更新）")
-            conn.execute("ROLLBACK")
+            conn.close()
             return
 
         # 2. 索引顺序扫描（只扫 i_weight=1.0 的行）
@@ -165,17 +164,21 @@ def compute_i_weight(
         cur = _execute_with_retry(
             conn,
             "SELECT DISTINCT SUBSTR(subject, 1, 2) "
-            "FROM knowledge_triples WHERE i_weight = ? AND subject IS NOT NULL",
-            (DEFAULT_I_WEIGHT,)
+            "FROM knowledge_triples WHERE ABS(i_weight - 1.0) < 0.0001 AND subject IS NOT NULL",
+            ()
         )
         for row in cur:
             prefixes.append(row[0])
-        # ROLLBACK 释放读锁，准备写事务
-        conn.execute("ROLLBACK")
+        # 无需 ROLLBACK：isolation_level=None 时 SELECT 不在事务中
         print(f"  📊 前缀数: {len(prefixes):,}")
         print()
 
         for prefix_idx, prefix in enumerate(prefixes):
+            # 确保没有活跃事务（SELECT 可能开启了隐式事务）
+            try:
+                conn.execute("ROLLBACK")
+            except:
+                pass
             # 为当前前缀开启写事务
             conn.execute("BEGIN IMMEDIATE")
 
@@ -183,9 +186,9 @@ def compute_i_weight(
             cur = _execute_with_retry(
                 conn,
                 "SELECT subject FROM knowledge_triples "
-                "WHERE i_weight = ? AND subject LIKE ? "
+                "WHERE ABS(i_weight - 1.0) < 0.0001 AND subject LIKE ? "
                 "ORDER BY subject",
-                (DEFAULT_I_WEIGHT, prefix + "%")
+                (prefix + "%",)
             )
 
             current_subject = None
@@ -202,7 +205,7 @@ def compute_i_weight(
                         if len(batch) >= batch_size:
                             _executemany_with_retry(
                                 conn,
-                                "UPDATE knowledge_triples SET i_weight = ? WHERE subject = ?",
+                                "UPDATE knowledge_triples SET i_weight = ? WHERE subject = ? AND ABS(i_weight - 1.0) < 0.0001",
                                 batch
                             )
                             conn.execute("COMMIT")
@@ -215,19 +218,23 @@ def compute_i_weight(
                 else:
                     current_count += 1
 
+            # 处理最后一个 subject
+            if current_subject is not None:
+                iw = 1.0 + math.log(1.0 + current_count) / 10.0
+                batch.append((iw, current_subject))
+
             # 处理批次尾部
             if batch:
                 _executemany_with_retry(
                     conn,
-                    "UPDATE knowledge_triples SET i_weight = ? WHERE subject = ?",
+                    "UPDATE knowledge_triples SET i_weight = ? WHERE subject = ? AND ABS(i_weight - 1.0) < 0.0001",
                     batch
                 )
                 conn.execute("COMMIT")
                 checkpoint_batch += 1
+                total_rows_updated += len(batch)  # 实际更新行数
                 batch = []
-
-            total_subjects_updated += 1  # 实际应该是该前缀的 subject 数，这里简化
-
+            
             # 定期 WAL checkpoint（防止 WAL 文件无限增长）
             if checkpoint_batch >= CHECKPOINT_INTERVAL:
                 conn.execute("PRAGMA wal_checkpoint(PASSIVE)")

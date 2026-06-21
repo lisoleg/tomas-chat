@@ -90,6 +90,33 @@ class Octonion:
         """虚部（e1-e7 分量）"""
         return self.e[1:]
     
+    def odon_product(self, other: 'Octonion') -> 'Octonion':
+        """
+        阴龙积 ⊙ 运算：基于 Fano Plane 符号规则的八元数乘法
+
+        阴龙积 ⊙ 与标准八元数乘法 * 等价，
+        但显式标注 Fano Plane 符号规则以区分语义用途：
+          ⊙ 用于 Moufang-ALU 计算单元
+          * 用于一般代数运算
+
+        Args:
+            other: 另一个八元数
+
+        Returns:
+            阴龙积结果八元数
+        """
+        return self * other
+
+    def __matmul__(self, other: 'Octonion') -> 'Octonion':
+        """
+        @ 运算符映射为阴龙积 ⊙（Python 语法载体）
+
+        用法: a @ b 等价于 a ⊙ b
+        """
+        if not isinstance(other, Octonion):
+            raise TypeError("@ 运算仅支持 Octonion 类型（阴龙积 ⊙）")
+        return self.odon_product(other)
+
     def __mul__(self, other: 'Octonion') -> 'Octonion':
         """
         八元数乘法（非结合）

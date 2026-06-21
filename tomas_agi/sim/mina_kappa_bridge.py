@@ -489,6 +489,106 @@ class MinaTOMASSnap:
 
 
 # ============================================================
+# L3 物理一致性过滤器 (P0-3)
+# ============================================================
+
+class PhysicalConsistencyFilter:
+    """
+    L3 物理一致性过滤器
+    
+    检查输入是否符合物理世界约束：
+    - 数值范围合理性
+    - 因果关系一致性
+    - 时空连续性
+    """
+    
+    def __init__(self, physics_score_threshold: float = 0.8):
+        self.threshold = physics_score_threshold
+        
+    def filter(self, input_data: dict) -> tuple:
+        """
+        过滤物理上不可行的输入，返回 (passed, score)
+        """
+        checks = []
+        weights = []
+        
+        # 检查数值范围
+        if "numeric" in input_data:
+            num_score = self._check_numeric_range(input_data["numeric"])
+            checks.append(num_score)
+            weights.append(1.0)
+        
+        # 检查文本中的物理断言
+        if "text" in input_data and input_data["text"]:
+            phys_score = self._check_physical_assertions(input_data["text"])
+            checks.append(phys_score)
+            weights.append(0.7)
+        
+        # 检查结构中的时空一致性
+        if "structure" in input_data and input_data["structure"]:
+            struct_score = self._check_spatiotemporal(input_data["structure"])
+            checks.append(struct_score)
+            weights.append(0.5)
+        
+        if not checks:
+            return (True, 1.0)
+        
+        avg_score = sum(s * w for s, w in zip(checks, weights)) / sum(weights)
+        passed = avg_score >= self.threshold
+        return (passed, avg_score)
+    
+    def _check_numeric_range(self, numeric_data) -> float:
+        """检查数值是否在物理合理范围内"""
+        score = 1.0
+        if isinstance(numeric_data, dict):
+            for key, val in numeric_data.items():
+                if isinstance(val, (int, float)):
+                    # 检查一些常见物理量范围
+                    if key in ("temperature", "temp") and abs(val) > 1e12:
+                        score -= 0.5
+                    if key in ("velocity", "speed") and abs(val) > 3e8:  # 超光速
+                        score -= 0.8
+                    if key in ("pressure",) and val < 0:
+                        score -= 0.6
+        return max(score, 0.0)
+    
+    def _check_physical_assertions(self, text: str) -> float:
+        """检查文本中是否存在违反物理定律的断言"""
+        score = 1.0
+        text_lower = text.lower()
+        # 检测明显违反物理常识的模式（简化版）
+        suspicious_patterns = [
+            ("perpetual motion", 0.9),
+            ("over unity", 0.8),
+            ("faster than light", 0.7),
+            ("infinite energy", 0.8),
+            ("zero point energy", 0.5),
+        ]
+        for pattern, penalty in suspicious_patterns:
+            if pattern in text_lower:
+                score -= penalty
+        return max(score, 0.0)
+    
+    def _check_spatiotemporal(self, structure: dict) -> float:
+        """检查时空一致性"""
+        score = 1.0
+        if "time" in structure:
+            t = structure["time"]
+            if isinstance(t, (int, float)):
+                if t < 0:
+                    score -= 0.7  # 负时间
+                if t > 1e100:
+                    score -= 0.5  # 不合理的大时间
+        if "position" in structure or "coordinates" in structure:
+            pos = structure.get("position") or structure.get("coordinates")
+            if isinstance(pos, dict):
+                for dim, val in pos.items():
+                    if isinstance(val, (int, float)) and abs(val) > 1e50:
+                        score -= 0.5
+        return max(score, 0.0)
+
+
+# ============================================================
 # Self-Test
 # ============================================================
 if __name__ == "__main__":

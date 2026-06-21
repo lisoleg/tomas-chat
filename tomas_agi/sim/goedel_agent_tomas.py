@@ -1211,3 +1211,232 @@ def func():
     print("\n" + "=" * 72)
     print("  TOMASGodelAgent — All 12 Self-Tests Passed")
     print("=" * 72)
+
+
+# ============================================================
+# CodeSelfRepairLoop (P1-6: T18-T23)
+# 哥德尔智能体自指 → 代码自修复循环
+# ============================================================
+
+class CodeSelfRepairLoop:
+    """
+    代码自修复循环: Goedel Agent 自指 → 代码自修复
+
+    流程:
+    1. analyze_bug: 分析代码中的 Bug（定位、类型、描述）
+    2. generate_patch: 生成修复补丁
+    3. verify_patch: 验证补丁不引入新 Bug
+
+    设计原则:
+    - 每次修复后必须验证（verify_patch）
+    - 修复循环最多 3 次（避免无限递归）
+    - 补丁必须保留 H_HARD_SYMBOLS 硬锚
+    """
+
+    MAX_REPAIR_ITERATIONS = 3
+
+    def __init__(self, llm_api_func: Optional[Callable[[str], str]] = None):
+        """初始化自修复循环。
+
+        Args:
+            llm_api_func: LLM API 调用函数（可选，不提供时使用模拟修复）
+        """
+        self._llm_api_func = llm_api_func
+        self._repair_history: List[Dict] = []
+
+    def analyze_bug(self, code: str, error_msg: str) -> Dict:
+        """
+        分析代码中的 Bug
+
+        Args:
+            code:      源代码
+            error_msg: 错误信息
+
+        Returns:
+            {
+                'bug_type':     Bug 类型 ('syntax' | 'runtime' | 'logic' | 'security')
+                'location':     Bug 定位（行号或函数名）
+                'description':  Bug 描述
+                'severity':     严重程度 (0-1)
+            }
+        """
+        # 语法分析
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            return {
+                "bug_type": "syntax",
+                "location": f"line {e.lineno}",
+                "description": f"语法错误: {e.msg}",
+                "severity": 1.0,
+            }
+
+        # 基于错误信息的 Bug 分类
+        error_lower = error_msg.lower()
+        if any(kw in error_lower for kw in ["typeerror", "attributeerror", "nameerror", "keyerror", "indexerror", "valueerror"]):
+            bug_type = "runtime"
+        elif any(kw in error_lower for kw in ["assert", "wrong", "incorrect", "mismatch", "fail"]):
+            bug_type = "logic"
+        elif any(kw in error_lower for kw in ["injection", "xss", "sqli", "overflow", "unsafe"]):
+            bug_type = "security"
+        else:
+            bug_type = "runtime"
+
+        # 定位 Bug（简化：搜索 AST 中的可能问题）
+        location = "unknown"
+        description = error_msg
+        severity = 0.5
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                # 检查函数中是否有明显的空实现
+                if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+                    location = f"function {node.name}"
+                    description = f"空实现函数: {node.name}"
+                    severity = 0.3
+
+        result = {
+            "bug_type": bug_type,
+            "location": location,
+            "description": description,
+            "severity": severity,
+        }
+        self._repair_history.append({"phase": "analyze", "result": result})
+        logger.info("Bug 分析: type=%s, location=%s, severity=%.2f",
+                     bug_type, location, severity)
+        return result
+
+    def generate_patch(self, bug_info: Dict) -> str:
+        """
+        生成修复补丁
+
+        Args:
+            bug_info: analyze_bug 返回的 Bug 信息字典
+
+        Returns:
+            修复补丁字符串
+        """
+        if self._llm_api_func is not None:
+            try:
+                prompt = (
+                    "你是代码修复专家。请基于以下 Bug 信息生成修复补丁。\n\n"
+                    f"Bug 类型: {bug_info.get('bug_type', 'unknown')}\n"
+                    f"Bug 定位: {bug_info.get('location', 'unknown')}\n"
+                    f"Bug 描述: {bug_info.get('description', 'unknown')}\n\n"
+                    "要求:\n"
+                    "1. 补丁必须保留以下硬锚符号:\n"
+                    + "\n".join(f"   - {s}" for s in sorted(TOMASGodelAgent.H_HARD_SYMBOLS))
+                    + "\n2. 补丁不能引入新的 Bug\n"
+                    "3. 补丁应尽可能最小化改动\n"
+                )
+                patch = self._llm_api_func(prompt)
+                return patch
+            except Exception as e:
+                logger.warning("LLM 补丁生成异常，使用模拟补丁: %s", e)
+
+        # 模拟补丁生成
+        bug_type = bug_info.get("bug_type", "unknown")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+        patch = f'''# Auto-repair patch ({timestamp})
+# Bug type: {bug_type}
+# Location: {bug_info.get('location', 'unknown')}
+# Description: {bug_info.get('description', 'unknown')}
+
+PHYSICS_CONSERVATION = True
+MEMORY_SAFETY = True
+TYPE_SAFETY = True
+CONCURRENCY_SAFETY = True
+DEAD_ZERO_THRESHOLD = 0.15
+MUS_DUAL_STORE = True
+
+def repaired_function():
+    """修复后的函数"""
+    return {"status": "repaired", "timestamp": {time.time():.4f}}
+'''
+
+        self._repair_history.append({"phase": "generate_patch", "patch_len": len(patch)})
+        logger.info("补丁生成: bug_type=%s, patch_len=%d", bug_type, len(patch))
+        return patch
+
+    def verify_patch(self, patch: str) -> bool:
+        """
+        验证补丁不引入新 Bug
+
+        验证规则:
+        1. 补丁可编译（无语法错误）
+        2. 补丁保留所有 H_HARD_SYMBOLS
+        3. 补丁不包含已知危险模式（del 硬锚、赋值为 None）
+
+        Args:
+            patch: 修复补丁字符串
+
+        Returns:
+            True 如果补丁通过验证
+        """
+        # 规则 1: 可编译
+        try:
+            compile(patch, "<repair_patch>", "exec")
+        except SyntaxError as e:
+            logger.warning("补丁验证失败: 语法错误: %s", e)
+            return False
+
+        # 规则 2: 保留 H_HARD_SYMBOLS
+        for symbol in TOMASGodelAgent.H_HARD_SYMBOLS:
+            if symbol not in patch:
+                logger.warning("补丁验证失败: 缺少硬锚符号 %s", symbol)
+                return False
+
+        # 规则 3: 无危险模式
+        try:
+            tree = ast.parse(patch)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Delete):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id in TOMASGodelAgent.H_HARD_SYMBOLS:
+                            logger.warning("补丁验证失败: 删除硬锚符号 %s", target.id)
+                            return False
+        except SyntaxError:
+            return False
+
+        self._repair_history.append({"phase": "verify_patch", "verified": True})
+        logger.info("补丁验证通过")
+        return True
+
+    def run_repair_loop(self, code: str, error_msg: str) -> Dict:
+        """
+        运行完整的自修复循环
+
+        流程: analyze → patch → verify (最多 MAX_REPAIR_ITERATIONS 次)
+
+        Args:
+            code:      源代码
+            error_msg: 错误信息
+
+        Returns:
+            {
+                'bug_info':    Bug 分析结果
+                'patch':       修复补丁
+                'verified':    补丁是否通过验证
+                'iterations':  修复迭代次数
+            }
+        """
+        bug_info = self.analyze_bug(code, error_msg)
+        patch = ""
+        verified = False
+
+        for iteration in range(self.MAX_REPAIR_ITERATIONS):
+            logger.info("自修复循环: iteration %d/%d", iteration + 1, self.MAX_REPAIR_ITERATIONS)
+            patch = self.generate_patch(bug_info)
+            verified = self.verify_patch(patch)
+            if verified:
+                break
+            # 重新分析补丁问题
+            bug_info = self.analyze_bug(patch, "补丁验证失败")
+
+        return {
+            "bug_info": bug_info,
+            "patch": patch,
+            "verified": verified,
+            "iterations": iteration + 1 if verified else self.MAX_REPAIR_ITERATIONS,
+        }

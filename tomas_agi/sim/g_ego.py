@@ -104,6 +104,9 @@ G_EGO_SWITCH_DELAY_MS: float = 50.0
 T_SHIELD_G_EGO_TIMEOUT: int = 3
 SEMANTIC_CONSISTENCY_THRESHOLD: float = 0.90
 
+# ψ-Alignment 阈值（低于此值视为不对齐，触发 realign）
+PSI_ALIGNMENT_THRESHOLD: float = 0.3
+
 
 # ── Data Structures ──────────────────────────────────────────────────────
 
@@ -312,6 +315,85 @@ class G_egoEngine:
             f"G_ego: ψ-alignment for edge: score={alignment_score:.4f}, "
             f"aligned={aligned}"
         )
+        return result
+
+    def _realign_psi(self, psi_target: Any) -> None:
+        """重新对齐 ψ-锚点（当对齐分数低于阈值时调用）
+
+        Article Theorem 3c: ψ-alignment 检查
+            当 alignment_score < PSI_ALIGNMENT_THRESHOLD 时，
+            重新计算 ψ-锚点并更新 G_ego 状态。
+
+        Args:
+            psi_target: 目标 EML 超边（用于重新计算对齐）
+        """
+        # 计算当前对齐分数
+        if psi_target is not None:
+            result = self.compute_psi_alignment(psi_target)
+            if not result["aligned"]:
+                # 不对齐：强制更新 ψ-锚点为当前 G_ego 状态
+                self._update_psi_anchor()
+                logger.warning(
+                    f"G_ego: ψ-anchor realigned to current state "
+                    f"(i={self.get_current_i_value():.4f}, "
+                    f"score={result['alignment_score']:.4f})"
+                )
+            else:
+                logger.debug(
+                    f"G_ego: ψ-alignment OK (score={result['alignment_score']:.4f})"
+                )
+        else:
+            # 无目标：直接更新 ψ-锚点为当前状态
+            self._update_psi_anchor()
+            logger.info("G_ego: ψ-anchor updated to current state")
+
+    def step(self, edge: Optional[Any] = None) -> Dict[str, Any]:
+        """G_ego 自循环单步执行（训练/推理入口）
+
+        在 self-loop 迭代前检查 ψ-alignment，
+        如果对齐分数低于阈值，则触发 realign。
+
+        Args:
+            edge: 可选 EML 超边（用于 ψ-alignment 检查）
+
+        Returns:
+            步骤执行结果字典
+        """
+        psi_aligned = None
+
+        # 1. ψ-alignment 检查（在 self-loop 入口处）
+        if edge is not None:
+            psi_result = self.compute_psi_alignment(edge)
+            psi_aligned = psi_result["alignment_score"]
+            if psi_aligned < PSI_ALIGNMENT_THRESHOLD:
+                logger.warning(
+                    f"G_ego: ψ-alignment below threshold: {psi_aligned:.4f}, "
+                    f"realigning..."
+                )
+                self._realign_psi(edge)
+            logger.debug(f"G_ego: ψ-alignment score={psi_aligned:.4f}")
+
+        # 2. 确保 G_ego 在正确模式
+        if self._status.mode == "idle":
+            # 默认进入 afferent 模式
+            switch_result = self.switch_mode("afferent")
+            if not switch_result["success"]:
+                return {
+                    "success": False,
+                    "error": "Failed to switch to afferent mode",
+                    "psi_alignment": psi_aligned,
+                }
+
+        # 3. 执行当前模式的操作（简化：仅返回状态）
+        result = {
+            "success": True,
+            "mode": self._status.mode,
+            "i_value": self.get_current_i_value(),
+            "psi_anchor": self._status.psi_anchor,
+            "psi_alignment": psi_aligned,
+        }
+
+        logger.debug(f"G_ego: step completed (mode={result['mode']})")
         return result
 
     def self_inspect_psi_anchor(self) -> Dict[str, Any]:

@@ -494,6 +494,83 @@ class HodgeICoupling:
 # 拓扑信号演化
 # ============================================================
 
+    
+    # ============================================================
+    # MNQ-Deep Ω 累积 + 衰减残差（TOMAS v3.5 新增）
+    # ============================================================
+
+    def apply_omega_accumulation(self, laplacian, omega_values):
+        """
+        Ω 累积：将跨层 Ω 值累加到 Hodge Laplacian 上
+        
+        参考：MNQ-Deep Cross-Layer Ω-φ Transformer 文章
+        
+        Args:
+            laplacian: Hodge Laplacian 矩阵 L_{[n]}
+            omega_values: 跨层 Ω 值列表（按层顺序）
+            
+        Returns:
+            修改后的 Laplacian 矩阵（包含 Ω 累积）
+        """
+        if not omega_values:
+            return laplacian
+        
+        n = len(laplacian)
+        if n == 0:
+            return laplacian
+        
+        # 计算 Ω 累积偏置（使用 Ω 值的均值）
+        omega_sum = sum(omega_values)
+        omega_mean = omega_sum / len(omega_values)
+        omega_bias = omega_mean * self.lambda_i  # 使用 λ 作为缩放因子
+        
+        # 将 Ω 偏置添加到 Laplacian 对角线上
+        result = [[laplacian[i][j] for j in range(n)] for i in range(n)]
+        for i in range(min(n, len(omega_values))):
+            result[i][i] += omega_bias * (omega_values[i] / (abs(omega_values[i]) + 1e-10))
+            
+        logger.debug(
+            f"[Ω-Accumulation] Applied ω={omega_mean:.6f} bias to Laplacian "
+            f"({n}x{n})"
+        )
+        return result
+
+    def apply_attenuation_residual(self, signal, decay_rate=0.9):
+        """
+        衰减残差：对信号施加衰减因子
+        
+        参考：MNQ-Deep 文章中的衰减残差机制
+        
+        对输入信号施加指数衰减，使得早期层的贡献逐渐衰减，
+        近期层的贡献保持较强。
+        
+        Args:
+            signal: 输入信号向量
+            decay_rate: 衰减率（0=完全遗忘，1=无衰减）
+            
+        Returns:
+            衰减后的信号向量
+        """
+        if not signal:
+            return signal
+        
+        n = len(signal)
+        # 计算衰减权重（近期层权重更高）
+        weights = [decay_rate ** (n - i - 1) for i in range(n)]
+        # 归一化权重
+        weight_sum = sum(weights)
+        if weight_sum > 0:
+            weights = [w / weight_sum for w in weights]
+            
+        # 应用衰减
+        result = [signal[i] * weights[i] for i in range(n)]
+        
+        logger.debug(
+            f"[Attenuation-Residual] Applied decay_rate={decay_rate:.4f} "
+            f"to signal (len={n})"
+        )
+        return result
+
 class TopologicalSignalEvolution:
     """拓扑信号在 TOMAS-WSC 上的动力学演化
 

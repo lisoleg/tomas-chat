@@ -35,7 +35,7 @@ try:
 except ImportError:
     _HAS_NUMPY = False
 
-from equivariant_layers import EquivariantLinearLayer
+from sim.equivariant_layers import EquivariantLinearLayer
 
 
 # ============================================================
@@ -744,3 +744,315 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("EMLEHNN 自测全部通过!")
     print("=" * 60)
+
+
+# ============================================================
+# AST ↔ EML 同构映射器 (Reasonix 编程智能体集成)
+# ============================================================
+
+import ast as _ast
+
+
+class ASTtoEMLMapper:
+    """AST ↔ EML 超图同构映射器。
+
+    将 Python AST 节点映射为 EML 超边 (HyperEdge)，
+    实现代码结构在 EML 超图中的等价表示，
+    支持 Reasonix 编程智能体对代码进行超图级别分析和操作。
+
+    映射规则：
+        - AST 节点 → HyperEdge.edge_id (节点类型+名称)
+        - AST 子节点关系 → HyperEdge.nodes (边连接的节点索引)
+        - AST 节点属性 → HyperEdge.features (特征向量)
+        - 关键语义权重 → HyperEdge.i_value (信息存在度)
+        - 安全相关节点 → is_hard_anchor=True
+
+    方法：
+        ast_to_eml(ast_node) -> EMLHyperEdge: AST节点→EML超边
+        eml_to_ast(hyperedge) -> ast.AST: EML超边→AST节点
+    """
+
+    # AST 节点类型到 i_value 的默认权重映射
+    _NODE_WEIGHTS = {
+        # 安全相关 — 硬锚点 (i_value ≥ 0.95)
+        "Import": 0.95,        # 导入语句（可能引入安全风险）
+        "ImportFrom": 0.95,
+        "FunctionDef": 0.85,   # 函数定义
+        "ClassDef": 0.85,      # 类定义
+        "Return": 0.70,        # 返回语句
+        "Assign": 0.60,        # 赋值语句
+        # 一般节点
+        "Expr": 0.50,
+        "Call": 0.55,          # 函数调用
+        "Name": 0.40,          # 变量名
+        "Constant": 0.30,      # 常量
+        "BinOp": 0.45,         # 二元运算
+        "Compare": 0.45,       # 比较运算
+        "If": 0.60,            # 条件语句
+        "For": 0.55,           # 循环
+        "While": 0.55,
+        "Try": 0.70,           # 异常处理（安全相关）
+    }
+
+    # 安全关键字 — 映射为硬锚点
+    _HARD_ANCHOR_TYPES = {"Import", "ImportFrom"}
+
+    def __init__(self):
+        self._node_registry: Dict[str, int] = {}  # edge_id → node_index
+        self._next_index: int = 0
+        self._mapping_cache: Dict[str, EMLHyperEdge] = {}
+
+    def _alloc_index(self, edge_id: str) -> int:
+        """分配节点索引。"""
+        if edge_id in self._node_registry:
+            return self._node_registry[edge_id]
+        idx = self._next_index
+        self._node_registry[edge_id] = idx
+        self._next_index += 1
+        return idx
+
+    def ast_to_eml(self, ast_node: _ast.AST) -> EMLHyperEdge:
+        """将 AST 节点映射为 EML 超边。
+
+        Args:
+            ast_node: Python AST 节点
+
+        Returns:
+            EMLHyperEdge: 对应的 EML 超边
+        """
+        node_type = ast_node.__class__.__name__
+
+        # 构建 edge_id: 类型+名称(如有)
+        name_attr = ""
+        if hasattr(ast_node, 'name') and ast_node.name:
+            name_attr = f":{ast_node.name}"
+        elif hasattr(ast_node, 'id') and ast_node.id:
+            name_attr = f":{ast_node.id}"
+        elif hasattr(ast_node, 'attr') and ast_node.attr:
+            name_attr = f":{ast_node.attr}"
+        edge_id = f"ast_{node_type}{name_attr}"
+
+        # 缓存检查
+        if edge_id in self._mapping_cache:
+            return self._mapping_cache[edge_id]
+
+        # 子节点 → nodes 列表
+        child_nodes = []
+        for child in _ast.iter_child_nodes(ast_node):
+            child_type = child.__class__.__name__
+            child_name = ""
+            if hasattr(child, 'name') and child.name:
+                child_name = f":{child.name}"
+            elif hasattr(child, 'id') and child.id:
+                child_name = f":{child.id}"
+            child_id = f"ast_{child_type}{child_name}"
+            child_nodes.append(self._alloc_index(child_id))
+
+        # 自身节点索引
+        self_index = self._alloc_index(edge_id)
+        if self_index not in child_nodes:
+            nodes = [self_index] + child_nodes
+        else:
+            nodes = child_nodes
+
+        # i_value 权重
+        i_value = self._NODE_WEIGHTS.get(node_type, 0.40)
+
+        # 硬锚点标记
+        is_hard_anchor = node_type in self._HARD_ANCHOR_TYPES
+
+        # 特征向量：[节点类型编码, 子节点数, 行号(如有), ...]
+        type_hash = int(hashlib.md5(node_type.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+        n_children = len(child_nodes)
+        lineno = getattr(ast_node, 'lineno', 0) or 0
+        features = [type_hash, n_children, lineno / 10000.0,
+                    i_value, float(is_hard_anchor), 0.0, 0.0, 0.0]
+
+        hyperedge = EMLHyperEdge(
+            edge_id=edge_id,
+            nodes=nodes,
+            i_value=i_value,
+            is_hard_anchor=is_hard_anchor,
+            features=features,
+        )
+        self._mapping_cache[edge_id] = hyperedge
+        return hyperedge
+
+    def eml_to_ast(self, hyperedge: EMLHyperEdge) -> _ast.AST:
+        """将 EML 超边逆向映射为 AST 节点。
+
+        Args:
+            hyperedge: EML 超边
+
+        Returns:
+            ast.AST: 对应的 AST 节点（简化重建）
+        """
+        edge_id = hyperedge.edge_id
+
+        # 解析 edge_id 格式: "ast_Type:Name" 或 "ast_Type"
+        if not edge_id.startswith("ast_"):
+            raise ValueError(f"无法逆向映射非 AST 超边: {edge_id}")
+
+        parts = edge_id[4:].split(":", 1)
+        node_type = parts[0]
+        node_name = parts[1] if len(parts) > 1 else None
+
+        # 根据类型重建 AST 节点
+        ast_node = self._rebuild_ast_node(node_type, node_name, hyperedge)
+        return ast_node
+
+    def _rebuild_ast_node(self, node_type: str, node_name: Optional[str],
+                          hyperedge: EMLHyperEdge) -> _ast.AST:
+        """根据类型和名称重建 AST 节点。"""
+        # 函数定义
+        if node_type == "FunctionDef" and node_name:
+            return _ast.FunctionDef(
+                name=node_name,
+                args=_ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], defaults=[]),
+                body=[_ast.Pass()],
+                decorator_list=[],
+            )
+        # 类定义
+        if node_type == "ClassDef" and node_name:
+            return _ast.ClassDef(
+                name=node_name,
+                bases=[],
+                keywords=[],
+                body=[_ast.Pass()],
+                decorator_list=[],
+            )
+        # 导入
+        if node_type == "Import":
+            return _ast.Import(names=[_ast.alias(name="unknown", asname=None)])
+        if node_type == "ImportFrom":
+            return _ast.ImportFrom(module="unknown", names=[_ast.alias(name="unknown", asname=None)], level=0)
+        # 变量名
+        if node_type == "Name" and node_name:
+            return _ast.Name(id=node_name, ctx=_ast.Load())
+        # 常量
+        if node_type == "Constant":
+            return _ast.Constant(value=0)
+        # 赋值
+        if node_type == "Assign":
+            return _ast.Assign(
+                targets=[_ast.Name(id="var", ctx=_ast.Store())],
+                value=_ast.Constant(value=0),
+            )
+        # 返回
+        if node_type == "Return":
+            return _ast.Return(value=_ast.Constant(value=None))
+        # 表达式
+        if node_type == "Expr":
+            return _ast.Expr(value=_ast.Constant(value=0))
+        # 函数调用
+        if node_type == "Call":
+            return _ast.Call(
+                func=_ast.Name(id="func", ctx=_ast.Load()),
+                args=[],
+                keywords=[],
+            )
+        # 条件
+        if node_type == "If":
+            return _ast.If(
+                test=_ast.Constant(value=True),
+                body=[_ast.Pass()],
+                orelse=[],
+            )
+        # 循环
+        if node_type == "For":
+            return _ast.For(
+                target=_ast.Name(id="i", ctx=_ast.Store()),
+                iter=_ast.Name(id="range", ctx=_ast.Load()),
+                body=[_ast.Pass()],
+                orelse=[],
+            )
+        if node_type == "While":
+            return _ast.While(
+                test=_ast.Constant(value=True),
+                body=[_ast.Pass()],
+                orelse=[],
+            )
+        # 异常处理
+        if node_type == "Try":
+            return _ast.Try(
+                body=[_ast.Pass()],
+                handlers=[],
+                orelse=[],
+                finalbody=[],
+            )
+        # 二元运算
+        if node_type == "BinOp":
+            return _ast.BinOp(
+                left=_ast.Constant(value=0),
+                op=_ast.Add(),
+                right=_ast.Constant(value=0),
+            )
+        # 比较运算
+        if node_type == "Compare":
+            return _ast.Compare(
+                left=_ast.Constant(value=0),
+                ops=[_ast.Eq()],
+                comparators=[_ast.Constant(value=0)],
+            )
+        # 默认：通用占位节点
+        return _ast.Expr(value=_ast.Constant(value=f"<{node_type}>"))
+
+    def map_source(self, source_code: str) -> List[EMLHyperEdge]:
+        """将完整源代码映射为 EML 超边列表。
+
+        Args:
+            source_code: Python 源代码字符串
+
+        Returns:
+            List[EMLHyperEdge]: 所有 AST 节点对应的超边列表
+        """
+        try:
+            tree = _ast.parse(source_code)
+        except SyntaxError as e:
+            logger.warning(f"源代码解析失败: {e}")
+            return []
+
+        edges = []
+        for node in _ast.walk(tree):
+            edge = self.ast_to_eml(node)
+            if edge.i_value >= 0.30:  # 过滤低价值节点
+                edges.append(edge)
+        return edges
+
+
+# --- ASTtoEMLMapper 自测 ---
+if __name__ == "__main__" and "ASTtoEMLMapper" in dir():
+    print("\n=== ASTtoEMLMapper 自测 ===")
+    mapper = ASTtoEMLMapper()
+
+    # 1. 单节点映射
+    func_node = _ast.FunctionDef(
+        name="test_func", args=_ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], defaults=[]),
+        body=[_ast.Pass()], decorator_list=[],
+    )
+    edge = mapper.ast_to_eml(func_node)
+    print(f"  FunctionDef → edge_id={edge.edge_id}, i_value={edge.i_value}, "
+          f"is_hard_anchor={edge.is_hard_anchor}, nodes={edge.nodes}")
+    assert edge.edge_id == "ast_FunctionDef:test_func"
+    assert edge.i_value == 0.85
+    print("  [PASS] 单节点映射")
+
+    # 2. 逆向映射
+    ast_back = mapper.eml_to_ast(edge)
+    print(f"  逆向映射 → {ast_back.__class__.__name__}, name={getattr(ast_back, 'name', None)}")
+    assert isinstance(ast_back, _ast.FunctionDef)
+    assert ast_back.name == "test_func"
+    print("  [PASS] 逆向映射")
+
+    # 3. 源代码完整映射
+    source = "import os\ndef hello():\n    return 42\n"
+    edges_list = mapper.map_source(source)
+    print(f"  源代码映射 → {len(edges_list)} 个超边")
+    assert len(edges_list) > 0
+    import_edges = [e for e in edges_list if "Import" in e.edge_id]
+    assert len(import_edges) > 0
+    assert import_edges[0].is_hard_anchor
+    print("  [PASS] Import 超边为硬锚点")
+    print(f"  [PASS] 源代码完整映射 ({len(edges_list)} 超边)")
+
+    print("=== ASTtoEMLMapper 自测全部通过 ===")

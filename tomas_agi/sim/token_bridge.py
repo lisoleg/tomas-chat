@@ -1741,3 +1741,206 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ============================================================
+# DiffInjector (Reasonix 编程智能体集成)
+# ============================================================
+
+import difflib as _difflib
+import logging as _logging
+
+_logger = _logging.getLogger("DiffInjector")
+
+
+class DiffInjector:
+    """增量编译验证 Diff 注入器。
+
+    支持对代码文件进行增量 diff 计算和注入，
+    用于 Reasonix 编程智能体的代码自修复和增量编译验证流程。
+
+    Diff 结构：
+        - 包含行级变更信息（增/删/改）
+        - 计算基于 difflib.SequenceMatcher
+        - 注入前自动验证 diff 的安全性
+
+    方法：
+        compute_diff(old_code, new_code) -> Diff: 计算两个代码版本之间的差异
+        inject_diff(diff, target_file) -> bool: 将 diff 安全注入目标文件
+    """
+
+    # 安全模式关键词 — diff 中出现这些时拒绝注入
+    _DANGEROUS_PATTERNS = [
+        "del H_HARD_SYMBOLS",
+        "del PHYSICS_CONSERVATION",
+        "del MEMORY_SAFETY",
+        "del TYPE_SAFETY",
+        "del CONCURRENCY_SAFETY",
+        "del DEAD_ZERO_THRESHOLD",
+        "del MUS_DUAL_STORE",
+        "__import__('os').system",
+        "eval(",
+        "exec(",
+        "subprocess.call",
+        "os.system(",
+    ]
+
+    def __init__(self):
+        self._diff_history: List[Dict] = []
+
+    def compute_diff(self, old_code: str, new_code: str) -> Dict:
+        """计算两个代码版本之间的差异。
+
+        Args:
+            old_code: 原始代码字符串
+            new_code: 新版本代码字符串
+
+        Returns:
+            Diff: 包含变更信息的字典
+                - "operations": 变更操作列表 [{type, old_start, old_end, new_start, new_end, content}]
+                - "summary": 变更摘要 {adds, deletes, modifies}
+                - "is_safe": diff 是否安全（不含危险模式）
+                - "preserves_hard_symbols": 是否保留硬锚符号集
+        """
+        old_lines = old_code.splitlines(keepends=True)
+        new_lines = new_code.splitlines(keepends=True)
+
+        matcher = _difflib.SequenceMatcher(None, old_lines, new_lines)
+        operations = []
+        summary = {"adds": 0, "deletes": 0, "modifies": 0}
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            op = {
+                "type": tag,
+                "old_start": i1,
+                "old_end": i2,
+                "new_start": j1,
+                "new_end": j2,
+                "content": new_lines[j1:j2] if tag in ("insert", "replace") else old_lines[i1:i2],
+            }
+            operations.append(op)
+
+            if tag == "insert":
+                summary["adds"] += (j2 - j1)
+            elif tag == "delete":
+                summary["deletes"] += (i2 - i1)
+            elif tag == "replace":
+                summary["modifies"] += max(i2 - i1, j2 - j1)
+
+        # 安全性检查
+        is_safe = self._check_safety(new_code)
+        preserves_hard_symbols = self._check_hard_symbols_preserved(old_code, new_code)
+
+        diff = {
+            "operations": operations,
+            "summary": summary,
+            "is_safe": is_safe,
+            "preserves_hard_symbols": preserves_hard_symbols,
+            "old_code": old_code,
+            "new_code": new_code,
+        }
+        self._diff_history.append(diff)
+        return diff
+
+    def inject_diff(self, diff: Dict, target_file: str) -> bool:
+        """将 diff 安全注入目标文件。
+
+        Args:
+            diff: compute_diff 返回的差异字典
+            target_file: 目标文件路径
+
+        Returns:
+            bool: 注入是否成功
+        """
+        # 安全性前置检查
+        if not diff.get("is_safe", False):
+            _logger.warning(f"Diff 注入被拒绝: 包含危险模式")
+            return False
+        if not diff.get("preserves_hard_symbols", True):
+            _logger.warning(f"Diff 注入被拒绝: 硬锚符号集未保留")
+            return False
+
+        # 写入文件
+        new_code = diff.get("new_code", "")
+        if not new_code:
+            _logger.warning("Diff 注入被拒绝: new_code 为空")
+            return False
+
+        try:
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write(new_code)
+            _logger.info(f"Diff 注入成功: {target_file}")
+            return True
+        except Exception as e:
+            _logger.error(f"Diff 注入失败: {e}")
+            return False
+
+    def _check_safety(self, code: str) -> bool:
+        """检查代码是否包含危险模式。"""
+        for pattern in self._DANGEROUS_PATTERNS:
+            if pattern in code:
+                return False
+        return True
+
+    def _check_hard_symbols_preserved(self, old_code: str, new_code: str) -> bool:
+        """检查硬锚符号集是否在新代码中保留。"""
+        hard_symbols = [
+            "PHYSICS_CONSERVATION",
+            "MEMORY_SAFETY",
+            "TYPE_SAFETY",
+            "CONCURRENCY_SAFETY",
+            "DEAD_ZERO_THRESHOLD",
+            "MUS_DUAL_STORE",
+        ]
+        for symbol in hard_symbols:
+            if symbol in old_code and symbol not in new_code:
+                return False
+        return True
+
+    def get_diff_history(self) -> List[Dict]:
+        """获取历史 diff 记录。"""
+        return self._diff_history.copy()
+
+
+# --- DiffInjector 自测 ---
+if __name__ == "__main__" and "DiffInjector" in dir() and not hasattr(_difflib, '_TESTING'):
+    print("\n=== DiffInjector 自测 ===")
+    injector = DiffInjector()
+
+    # 1. compute_diff
+    old_code = "x = 1\ny = 2\nH_HARD_SYMBOLS = True\n"
+    new_code = "x = 1\nz = 3\nH_HARD_SYMBOLS = True\n"
+    diff = injector.compute_diff(old_code, new_code)
+    print(f"  Diff 摘要: adds={diff['summary']['adds']}, "
+          f"deletes={diff['summary']['deletes']}, modifies={diff['summary']['modifies']}")
+    assert diff["is_safe"] is True
+    assert diff["preserves_hard_symbols"] is True
+    print("  [PASS] compute_diff 安全检查")
+
+    # 2. 安全 diff 注入
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
+        f.write(old_code)
+        tmp_path = f.name
+    result = injector.inject_diff(diff, tmp_path)
+    assert result is True
+    with open(tmp_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    assert "z = 3" in content
+    print("  [PASS] inject_diff 成功")
+    os.unlink(tmp_path)
+
+    # 3. 危险 diff 拒绝
+    dangerous_new = "x = 1\neval('os.system')\nH_HARD_SYMBOLS = True\n"
+    dangerous_diff = injector.compute_diff(old_code, dangerous_new)
+    assert dangerous_diff["is_safe"] is False
+    assert injector.inject_diff(dangerous_diff, "/tmp/danger.py") is False
+    print("  [PASS] 危险 diff 拒绝注入")
+
+    # 4. 硬锚删除拒绝
+    no_hard_new = "x = 1\nz = 3\n"
+    no_hard_diff = injector.compute_diff(old_code, no_hard_new)
+    assert no_hard_diff["preserves_hard_symbols"] is False
+    print("  [PASS] 硬锚删除 diff 检测")
+
+    print("=== DiffInjector 自测全部通过 ===")

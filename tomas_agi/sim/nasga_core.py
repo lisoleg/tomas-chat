@@ -5,7 +5,7 @@ NASGA 核心代数运算 —— TOMAS-AGI 仿真器 M1 里程碑 Phase 2
 
 import numpy as np
 from typing import Tuple, List, Dict
-from octonion_py import Octonion, _mult_table, fan_multiply
+from sim.octonion_py import Octonion, _mult_table, fan_multiply
 
 
 # ============================================================
@@ -347,3 +347,64 @@ def classify_delta_regime(delta):
         elif delta < 2.0: return 'quantum'
         elif abs(delta - 7.0) < 0.5: return 'stable'
         else: return 'deep_quantum'
+
+
+# ============================================================
+# NASGATrainer — NASGA 训练器（v3.5 新增）
+# ============================================================
+
+class NASGATrainer:
+    """NASGA 训练器 — 支持多种优化器，包括 MNQ-Deep
+
+    支持 optimizer:
+        - 'sgd': 随机梯度下降
+        - 'adam': Adam 优化器
+        - 'mnq_deep': MNQ-Deep Ω-φ Transformer（训练-推理分离）
+    """
+
+    def __init__(self, optimizer: str = 'sgd', dim: int = 512, **kwargs):
+        self.optimizer = optimizer
+        self.dim = dim
+        self.kwargs = kwargs
+        self._mnq_model = None  # MNQ-Deep 模型实例（懒加载）
+        self.logger = logging.getLogger(__name__)
+
+    def train_step(self, batch: Dict) -> float:
+        """单步训练
+
+        Args:
+            batch: 训练批次数据
+
+        Returns:
+            loss: 训练损失值
+        """
+        if self.optimizer == 'mnq_deep':
+            # MNQ-Deep 分支
+            from .mnq_deep import OmegaPhiTransformer, MNQDeepConfig
+            if self._mnq_model is None:
+                config = MNQDeepConfig(
+                    dim=self.dim,
+                    iwpu_bits=self.kwargs.get('iwpu_bits', 8),
+                    omega_init=self.kwargs.get('omega_init', 0.5),
+                    delta_s_rel=self.kwargs.get('delta_s_rel', 0.0),
+                )
+                self._mnq_model = OmegaPhiTransformer(config)
+                self.logger.info(
+                    f"[NASGATrainer] Initialized MNQ-Deep model "
+                    f"(dim={self.dim})"
+                )
+            loss = self._mnq_model.train_step(batch)
+            return loss
+        else:
+            # 默认 SGD/Adam 分支（占位实现）
+            self.logger.warning(
+                f"[NASGATrainer] Optimizer '{self.optimizer}' not fully "
+                f"implemented, returning dummy loss=0.0"
+            )
+            return 0.0
+
+    def freeze_kernel(self) -> None:
+        """冻结内核（仅对 mnq_deep 有效）"""
+        if self.optimizer == 'mnq_deep' and self._mnq_model is not None:
+            self._mnq_model.freeze_kernel()
+            self.logger.info("[NASGATrainer] Kernel frozen for inference")

@@ -13,7 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, DateTime,
-    Float, Index, UniqueConstraint, event, text as sa_text
+    Float, Boolean, Index, UniqueConstraint, event, text as sa_text
 )
 from sqlalchemy.orm import DeclarativeBase, scoped_session, sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -253,3 +253,22 @@ class MatroidCircuit(Base):
     __table_args__ = (
         Index("idx_circuit_type", "circuit_type"),
     )
+
+
+# ======================= MNQ-Deep 训练运行记录 =======================
+
+class MNQTrainingRun(Base):
+    """MNQ-Deep 训练运行记录"""
+    __tablename__ = 'mnq_training_runs'
+    
+    id = Column(Integer, primary_key=True)
+    dataset = Column(String(255))
+    optimizer = Column(String(50), default='mnq_deep')
+    epochs = Column(Integer, default=100)
+    batch_size = Column(Integer, default=32)
+    iwpu_bits = Column(Integer, default=8)
+    final_loss = Column(Float, nullable=True)
+    status = Column(String(20), default='pending')
+    frozen = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

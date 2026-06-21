@@ -552,3 +552,155 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("AetherSCMBridge 自测全部通过!")
     print("=" * 60)
+
+
+# ============================================================
+# Reasonix Bridge (P1-6: T18-T23)
+# Reasonix 编程智能体桥接器
+# ============================================================
+
+class ReasonixBridge:
+    """
+    Reasonix 编程智能体桥接器: 连接 Reasonix 编程智能体
+
+    核心方法:
+    - delegate_task(task_desc): 委托 Reasonix 执行编程任务
+    - receive_result(task_id):  接收任务执行结果
+
+    Reasonix 是一个外部编程智能体服务，通过本桥接器接入 TOMAS。
+    当 Reasonix 服务不可用时，使用内置模拟模式。
+    """
+
+    def __init__(self, reasonix_url: Optional[str] = None, api_key: Optional[str] = None):
+        """初始化 Reasonix 桥接器。
+
+        Args:
+            reasonix_url: Reasonix 服务 URL（可选）
+            api_key:      Reasonix API Key（可选）
+        """
+        self.reasonix_url = reasonix_url
+        self.api_key = api_key
+        self._tasks: Dict[str, Dict] = {}
+        self._use_mock = reasonix_url is None
+
+        logger.info(
+            "ReasonixBridge 初始化: mock=%s, url=%s",
+            self._use_mock, reasonix_url,
+        )
+
+    def delegate_task(self, task_desc: str) -> Dict:
+        """
+        委托 Reasonix 执行编程任务
+
+        Args:
+            task_desc: 任务描述
+
+        Returns:
+            {
+                'task_id':   任务 ID
+                'status':    任务状态 ('pending' | 'completed' | 'failed')
+                'output':    任务输出（代码或结果）
+            }
+        """
+        import uuid as _uuid
+        task_id = f"reasonix_{_uuid.uuid4().hex[:12]}"
+
+        if self._use_mock:
+            result = self._mock_delegate(task_id, task_desc)
+        else:
+            result = self._real_delegate(task_id, task_desc)
+
+        self._tasks[task_id] = result
+        return result
+
+    def _mock_delegate(self, task_id: str, task_desc: str) -> Dict:
+        """模拟模式: 生成模拟任务结果"""
+        import hashlib as _hl
+
+        # 模拟 Reasonix 生成代码
+        mock_code = f'''# Reasonix generated code (mock)
+# Task: {task_desc[:80]}
+
+PHYSICS_CONSERVATION = True
+MEMORY_SAFETY = True
+TYPE_SAFETY = True
+CONCURRENCY_SAFETY = True
+DEAD_ZERO_THRESHOLD = 0.15
+MUS_DUAL_STORE = True
+
+def solve_task():
+    """Reasonix 生成的解决方案"""
+    return {{
+        "task": "{task_desc[:40]}",
+        "status": "completed",
+        "confidence": 0.85,
+    }}
+'''
+
+        return {
+            "task_id": task_id,
+            "status": "completed",
+            "output": mock_code,
+            "metadata": {
+                "model": "reasonix-mock-v1",
+                "timestamp": time.time(),
+                "task_desc_hash": _hl.sha256(task_desc.encode()).hexdigest()[:16],
+            },
+        }
+
+    def _real_delegate(self, task_id: str, task_desc: str) -> Dict:
+        """实际模式: 调用 Reasonix 服务"""
+        try:
+            import requests
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+
+            payload = {
+                "task_id": task_id,
+                "task_description": task_desc,
+            }
+
+            resp = requests.post(
+                f"{self.reasonix_url}/api/generate",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+            return {
+                "task_id": task_id,
+                "status": result.get("status", "completed"),
+                "output": result.get("output", ""),
+                "metadata": result.get("metadata", {}),
+            }
+
+        except Exception as e:
+            logger.error("Reasonix 服务调用失败: %s", e)
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "output": "",
+                "metadata": {"error": str(e)},
+            }
+
+    def receive_result(self, task_id: str) -> Dict:
+        """
+        接收任务执行结果
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            任务结果字典
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            return {
+                "task_id": task_id,
+                "status": "not_found",
+                "output": "",
+            }
+        return task

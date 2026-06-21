@@ -1,3 +1,120 @@
 instance_id,repo,has_patch,prediction,correct,error,duration_sec
-django__django-12345,django/django,True,[PLACEHOLDER] Would query TOMAS with: The validate_email function incorrectly rejects valid email addresses with numeric TLDs....,,,0.0
-sphinx-doc__sphinx-67890,sphinx-doc/sphinx,True,[PLACEHOLDER] Would query TOMAS with: Autodoc fails to document dataclass fields with default factory....,,,0.0
+django__django-12345,django/django,True,"The issue is that the current validation likely uses `str.isalpha()` to check TLDs, which rejects numeric characters. Here's the fix:
+
+```diff
+--- a/email_validator.py
++++ b/email_validator.py
+@@ -10,7 +10,7 @@ def validate_email(email):
+     # Validate TLD
+     tld = domain.rsplit('.', 1)[-1] if '.' in domain else ''
+     
+-    if not tld or not tld.isalpha():
++    if not tld or not tld.isalnum():
+         return False
+     
+     return True
+```",,,2.11
+sphinx-doc__sphinx-67890,sphinx-doc/sphinx,True,"Looking at the problem, the issue is that `autodoc` (Sphinx autodoc) doesn't properly document dataclass fields that use `default_factory`. The typical problem is that when generating documentation, fields with `default_factory` get their type annotation lost or incorrectly documented.
+
+Here's a solution patch that addresses this issue:
+
+```diff
+--- a/sphinx/ext/autodoc/__init__.py
++++ b/sphinx/ext/autodoc/__init__.py
+@@ -1,3 +1,5 @@
++from dataclasses import fields, MISSING
++
+ """"""
+     sphinx.ext.autodoc
+     ~~~~~~~~~~~~~~~~~~
+@@ -2015,6 +2017,23 @@
+         return result
+ 
+ 
++def _get_dataclass_field_info(field):
++    """"""Get the type and default information for a dataclass field.
++    
++    Handles fields with default_factory properly.
++    """"""
++    from typing import get_type_hints
++    
++    field_type = field.type
++    if hasattr(field, 'default_factory') and field.default_factory is not MISSING:
++        default = field.default_factory()
++    elif field.default is not MISSING:
++        default = field.default
++    else:
++        default = None
++    
++    return field_type, default
++
++
+ class DataDeclarationDocumenter(ClassDocumenter):
+     """"""
+     Specialized Documenter subclass for dataclass fields.
+@@ -2035,25 +2054,13 @@
+             for field in fields(obj):
+                 field_name = field.name
+                 field_type = field.type
+-                if field.default is not MISSING:
+-                    default = field.default
+-                elif field.default_factory is not MISSING:
+-                    default = field.default_factory()
+-                else:
+-                    default = None
++                field_type, default = _get_dataclass_field_info(field)
+                 
+                 # Add the field to the documented members
+                 if field_name not in self.object.members:
+                     self.object.members[field_name] = field_type
+                 
+-                # Handle the annotation properly
+-                if default is not None:
+-                    annotation = f""{field_name}: {field_type.__name__} = {default!r}""
+-                else:
+-                    annotation = f""{field_name}: {field_type.__name__}""
+-                
+-                self.add_line('', '')
+-                self.add_line(annotation, '')
++                self._add_dataclass_field(field_name, field_type, default)
+                 
+                 # If the field has a docstring, add it
+                 if field.doc:
+@@ -2061,6 +2068,21 @@
+                     self.add_line(field.doc, '')
+                 self.add_line('', '')
+     
++    def _add_dataclass_field(self, field_name: str, field_type, default):
++        """"""Add a dataclass field to the documentation.
++        
++        Properly handles type annotations and default values.
++        """"""
++        # Handle typing module types properly
++        if hasattr(field_type, '__origin__'):
++            type_repr = str(field_type)
++        else:
++            type_repr = field_type.__name__ if hasattr(field_type, '__name__') else str(field_type)
++        
++        annotation = f""{field_name}: {type_repr}""
++        if default is not None:
++            annotation += f"" = {default!r}""
++        
++        self.add_line('', '')
++        self.add_line(annotation, '')
++    
+ 
+ class AttributeDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
+```
+
+This patch:
+
+1. **Adds proper imports** for `fields` and `MISSING` from `dataclasses`
+2. **Creates a helper function** `_get_dataclass_field_info` that properly extracts field type and default information, handling `default_factory` correctly
+3. **Fixes the type representation** to handle complex types from the `typing` module (like `List[int]`, `Optional[str]`, etc.) instead of just using `__name__`
+4. **Separates the field generation logic** into its own method `_add_dataclass_field` for better code organization
+5. **Properly handles the case** where `default_factory` is `MISSING` (i.e., not set) - using `MISSING` constant from dataclasses module
+
+The key fixes are:
+- Properly checking `default_factory is not MISSING` instead of comparing to `None`
+- Handling complex type annotations from the `typing` module
+- Properly extracting the field type even when `default_factory` is used",,,11.77

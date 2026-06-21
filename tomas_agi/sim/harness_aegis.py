@@ -1041,3 +1041,134 @@ def check_psi_acl(
     except Exception as e:
         logger.warning("check_psi_acl failed: %s", e)
         return True, "psi_acl_unavailable (allow by default)"
+
+
+# ====================================================================
+# L1 多模态交叉验证器 (P0-3)
+# ====================================================================
+
+class MultiModalCrossValidator:
+    """L1 多模态交叉验证器 — 文本/视觉/结构三通道一致性校验
+    
+    原理：对抗补丁通常只污染单一模态，多模态交叉验证可检测不一致。
+    例如：文本说"猫"但图像被植入对抗补丁后特征向量偏离。
+    
+    Attributes:
+        modalities:      使用的模态列表
+        _text_encoder:   文本编码器（预留）
+        _image_encoder:  图像编码器（预留）
+    
+    示例用法:
+        >>> validator = MultiModalCrossValidator()
+        >>> passed, score = validator.validate({
+        ...     "text": "a cat on the table",
+        ...     "image": "iVBORw0KGgo...",
+        ...     "structure": {"depth": 2},
+        ... })
+        >>> print(passed, score)
+    """
+    
+    def __init__(self, modalities: List[str] = None):
+        self.modalities = modalities or ["text", "image", "structure"]
+        self._text_encoder = None
+        self._image_encoder = None
+    
+    def validate(self, input_data: dict) -> tuple:
+        """验证多模态一致性
+        
+        Args:
+            input_data: 输入数据字典，可包含 text/image/structure 字段
+        
+        Returns:
+            (passed, score) — score 为加权平均一致性分数 [0,1]
+        """
+        scores = []
+        weights = []
+        
+        if "text" in input_data and input_data["text"]:
+            text_score = self._validate_text(input_data["text"])
+            scores.append(text_score)
+            weights.append(1.0)
+        
+        if "image" in input_data and input_data["image"]:
+            img_score = self._validate_image(input_data["image"])
+            scores.append(img_score)
+            weights.append(0.8)
+        
+        if "structure" in input_data and input_data["structure"]:
+            struct_score = self._validate_structure(input_data["structure"])
+            scores.append(struct_score)
+            weights.append(0.6)
+        
+        if not scores:
+            return (True, 1.0)  # 无数据默认通过
+        
+        # 加权平均一致性分数
+        avg_score = sum(s * w for s, w in zip(scores, weights)) / sum(weights)
+        passed = avg_score >= 0.7
+        return (passed, avg_score)
+    
+    def _validate_text(self, text: str) -> float:
+        """文本模态自一致性检查
+        
+        Args:
+            text: 文本内容
+        
+        Returns:
+            一致性分数 [0,1]
+        """
+        score = 1.0
+        # 检测过长 token 序列（潜在对抗注入）
+        if len(text) > 10000:
+            score -= 0.3
+        # 检测特殊字符异常比例
+        special_chars = sum(1 for c in text if not c.isalnum() and not c.isspace())
+        if len(text) > 0 and special_chars / len(text) > 0.5:
+            score -= 0.4
+        return max(score, 0.0)
+    
+    def _validate_image(self, image_data) -> float:
+        """图像模态一致性检查
+        
+        Args:
+            image_data: 图像数据（base64 字符串或其他格式）
+        
+        Returns:
+            一致性分数 [0,1]
+        """
+        score = 1.0
+        if isinstance(image_data, str):
+            if len(image_data) > 10_000_000:  # 超大图片
+                score -= 0.2
+            if not image_data.startswith(('iVBOR', '/9j/', 'R0lG')):  # 非标准 base64 头
+                score -= 0.3
+        return max(score, 0.0)
+    
+    def _validate_structure(self, structure: dict) -> float:
+        """结构模态一致性检查
+        
+        Args:
+            structure: 结构数据（嵌套字典）
+        
+        Returns:
+            一致性分数 [0,1]
+        """
+        score = 1.0
+        # 检查嵌套深度是否异常
+        depth = self._compute_depth(structure)
+        if depth > 20:
+            score -= 0.5
+        # 检查键名长度
+        for key in structure.keys():
+            if len(str(key)) > 500:
+                score -= 0.3
+                break
+        return max(score, 0.0)
+    
+    def _compute_depth(self, obj, depth=0):
+        """递归计算嵌套深度"""
+        if isinstance(obj, dict):
+            return max([self._compute_depth(v, depth + 1) for v in obj.values()], default=depth)
+        elif isinstance(obj, list):
+            return max([self._compute_depth(v, depth + 1) for v in obj], default=depth)
+        return depth

@@ -23,6 +23,9 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 import numpy as np
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -431,3 +434,109 @@ def demo_integration():
 
 if __name__ == "__main__":
     demo_integration()
+
+
+# ============================================================
+# κ-Gate 异常检测器 (P0-3 L2)
+# ============================================================
+
+class KappaGateDetector:
+    """κ-Gate 异常检测器 — 基于 Kappa 算子的拓扑异常检测
+    
+    原理：利用 κ-Snap 算子在 EML 超图上计算拓扑一致性，
+    异常输入会导致 κ 值显著偏离正常范围。
+    
+    Attributes:
+        threshold:      异常判定阈值
+        _baseline_kappa: 正常样本基线 κ 值
+        _history:        滑动窗口记录（最大100条）
+    
+    示例用法:
+        >>> detector = KappaGateDetector(threshold=0.5)
+        >>> detector.fit_baseline([{"text": "normal"}])
+        >>> kappa_score, alert = detector.detect({"text": "suspicious" * 1000})
+        >>> print(kappa_score, alert)
+    """
+    
+    def __init__(self, threshold: float = 0.5):
+        self.threshold = threshold
+        self._baseline_kappa = None
+        self._history = []  # 滑动窗口记录
+    
+    def fit_baseline(self, normal_samples: list):
+        """在正常样本上拟合基线 κ 值
+        
+        Args:
+            normal_samples: 正常样本列表，每项为 dict
+        """
+        kappas = []
+        for sample in normal_samples:
+            k = self._compute_kappa(sample)
+            kappas.append(k)
+        self._baseline_kappa = np.mean(kappas) if kappas else 0.0
+        logger.info("KappaGateDetector: baseline κ = %.4f", self._baseline_kappa)
+    
+    def detect(self, input_data: dict) -> tuple:
+        """检测异常
+        
+        Args:
+            input_data: 输入数据字典
+        
+        Returns:
+            (kappa_score, alert_message) — score 为归一化偏离度
+        """
+        kappa = self._compute_kappa(input_data)
+        # 维护滑动窗口
+        self._history.append(kappa)
+        if len(self._history) > 100:
+            self._history.pop(0)
+        
+        # 计算偏离度
+        if self._baseline_kappa is not None:
+            deviation = abs(kappa - self._baseline_kappa)
+            normalized = deviation / max(self._baseline_kappa, 1e-8)
+        else:
+            normalized = kappa
+        
+        if normalized > self.threshold:
+            return (normalized, f"κ异常偏离 (deviation={normalized:.4f})")
+        return (normalized, "")
+    
+    def _compute_kappa(self, input_data: dict) -> float:
+        """计算 κ 值 — 基于输入结构的拓扑复杂度度量
+        
+        综合指标：文本长度 + 结构深度 + 视觉通道数
+        
+        Args:
+            input_data: 输入数据字典
+        
+        Returns:
+            κ 值 [0,1]
+        """
+        kappa = 0.0
+        if "text" in input_data and input_data["text"]:
+            text_len = len(str(input_data["text"]))
+            kappa += min(text_len / 1000.0, 1.0)
+        if "structure" in input_data and input_data["structure"]:
+            # 结构深度
+            depth = self._compute_structure_depth(input_data["structure"])
+            kappa += depth * 0.1
+        if "image" in input_data and input_data["image"]:
+            kappa += 0.3  # 视觉模态权重
+        return min(kappa, 1.0)
+    
+    def _compute_structure_depth(self, obj, depth=0):
+        """递归计算结构深度
+        
+        Args:
+            obj:  任意嵌套对象
+            depth: 当前深度
+        
+        Returns:
+            最大嵌套深度
+        """
+        if isinstance(obj, dict):
+            return max([self._compute_structure_depth(v, depth + 1) for v in obj.values()], default=depth)
+        elif isinstance(obj, list):
+            return max([self._compute_structure_depth(v, depth + 1) for v in obj], default=depth)
+        return depth

@@ -508,6 +508,392 @@ class TProcessorV1:
 
 
 # ============================================================
+# Moufang-ALU 仿真扩展 (P1-4: T14-T15)
+# ============================================================
+
+class FanoPlaneLUT:
+    """
+    Fano 平面阴龙积查找表
+
+    7×7 查找表，基于 Fano 平面直线实现阴龙积 ⊙ 快速查表。
+    索引范围: 1-7（虚基 e1-e7），0（实基 e0）通过单位元规则处理。
+
+    表结构: lut[i][j] = (sign, k)
+        sign: +1 或 -1（Fano 平面方向箭头决定符号）
+        k: 结果基索引 (0-7)
+    """
+
+    # Fano 平面直线 (1-indexed)
+    FANO_LINES = [
+        (1, 2, 4), (2, 3, 5), (3, 4, 6),
+        (4, 5, 7), (5, 6, 1), (6, 7, 2), (7, 1, 3),
+    ]
+
+    def __init__(self):
+        """构建 7×7 Fano 平面查找表"""
+        self.lut: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        self._build()
+
+    def _build(self):
+        """根据 Fano 直线填充查找表"""
+        # 实基 e0: 单位元
+        for i in range(8):
+            self.lut[(0, i)] = (1, i)
+            self.lut[(i, 0)] = (1, i)
+
+        # 虚基平方: e_i * e_i = -e0
+        for i in range(1, 8):
+            self.lut[(i, i)] = (-1, 0)
+
+        # Fano 直线
+        for (a, b, c) in self.FANO_LINES:
+            self.lut[(a, b)] = (1, c)    # e_a ⊙ e_b = +e_c
+            self.lut[(b, a)] = (-1, c)   # e_b ⊙ e_a = -e_c
+            self.lut[(b, c)] = (1, a)    # e_b ⊙ e_c = +e_a
+            self.lut[(c, b)] = (-1, a)   # e_c ⊙ e_b = -e_a
+            self.lut[(c, a)] = (1, b)    # e_c ⊙ e_a = +e_b
+            self.lut[(a, c)] = (-1, b)   # e_a ⊙ e_c = -e_b
+
+    def lookup(self, i: int, j: int) -> Tuple[int, int]:
+        """
+        查表: e_i ⊙ e_j = sign * e_k
+
+        Args:
+            i: 左操作数基索引 (0-7)
+            j: 右操作数基索引 (0-7)
+
+        Returns:
+            (sign, k): sign=+1/-1, k=结果基索引
+        """
+        if i < 0 or i > 7 or j < 0 or j > 7:
+            raise ValueError(f"基索引超出范围 [0,7]: i={i}, j={j}")
+        return self.lut[(i, j)]
+
+    def compute_product(self, a_coeffs: np.ndarray, b_coeffs: np.ndarray) -> np.ndarray:
+        """
+        用查找表计算两个八元数的阴龙积 ⊙
+
+        Args:
+            a_coeffs: 八元数 A 的系数向量 (8,)
+            b_coeffs: 八元数 B 的系数向量 (8,)
+
+        Returns:
+            阴龙积结果系数向量 (8,)
+        """
+        c = np.zeros(8, dtype=np.float64)
+        for i in range(8):
+            if abs(a_coeffs[i]) < 1e-15:
+                continue
+            for j in range(8):
+                if abs(b_coeffs[j]) < 1e-15:
+                    continue
+                sign, k = self.lut[(i, j)]
+                c[k] += sign * a_coeffs[i] * b_coeffs[j]
+        return c
+
+    def verify_moufang_identity(self, trials: int = 100, tol: float = 1e-10) -> Dict:
+        """
+        验证 Moufang 恒等式 (八元数 ⊙ 满足弱结合律)
+
+        Moufang 恒等式:
+            A1: z⊙(x⊙(y⊙z)) = ((z⊙x)⊙y)⊙z
+            A2: (x⊙y)⊙(z⊙x) = x⊙((y⊙z)⊙x)
+            A3: (x⊙y)⊙z = x⊙(y⊙(x⊙z))  ← 仅当 x=z 的特例
+
+        Args:
+            trials: 随机试验次数
+            tol: 容差阈值
+
+        Returns:
+            验证结果字典
+        """
+        results = {"a1_pass": 0, "a2_pass": 0, "a3_pass": 0, "trials": trials}
+        for _ in range(trials):
+            x_coeffs = np.random.randn(8)
+            y_coeffs = np.random.randn(8)
+            z_coeffs = np.random.randn(8)
+
+            # A1: z⊙(x⊙(y⊙z)) ≈ ((z⊙x)⊙y)⊙z
+            yz = self.compute_product(y_coeffs, z_coeffs)
+            xyz = self.compute_product(x_coeffs, yz)
+            l_a1 = self.compute_product(z_coeffs, xyz)
+
+            zx = self.compute_product(z_coeffs, x_coeffs)
+            zxy = self.compute_product(zx, y_coeffs)
+            r_a1 = self.compute_product(zxy, z_coeffs)
+
+            if np.allclose(l_a1, r_a1, atol=tol):
+                results["a1_pass"] += 1
+
+            # A2: (x⊙y)⊙(z⊙x) ≈ x⊙((y⊙z)⊙x)
+            xy = self.compute_product(x_coeffs, y_coeffs)
+            zx2 = self.compute_product(z_coeffs, x_coeffs)
+            l_a2 = self.compute_product(xy, zx2)
+
+            yz2 = self.compute_product(y_coeffs, z_coeffs)
+            yzx = self.compute_product(yz2, x_coeffs)
+            r_a2 = self.compute_product(x_coeffs, yzx)
+
+            if np.allclose(l_a2, r_a2, atol=tol):
+                results["a2_pass"] += 1
+
+            # A3: (x⊙y)⊙z ≈ x⊙(y⊙(x⊙z)) 仅当 x=z 特例
+            xz = self.compute_product(x_coeffs, z_coeffs)
+            yxz = self.compute_product(y_coeffs, xz)
+            r_a3 = self.compute_product(x_coeffs, yxz)
+            l_a3 = self.compute_product(xy, z_coeffs)
+
+            if np.allclose(l_a3, r_a3, atol=tol):
+                results["a3_pass"] += 1
+
+        return results
+
+
+class MoufangALU:
+    """
+    Moufang-ALU: 八元数阴龙积 ⊙ 运算单元
+
+    基于 FanoPlaneLUT 实现阴龙积计算，支持:
+    - 八元数 ⊙ 八元数 → 八元数
+    - Moufang 恒等式验证
+    - 批量阴龙积计算
+    - CGD 约束校验接口
+    """
+
+    def __init__(self):
+        self.lut = FanoPlaneLUT()
+        self.operation_count = 0
+        self.energy_per_op = 0.01  # 每次运算能耗 (J)
+
+    def odon_multiply(self, a_coeffs: np.ndarray, b_coeffs: np.ndarray) -> np.ndarray:
+        """
+        八元数阴龙积 ⊙ 计算
+
+        Args:
+            a_coeffs: 八元数 A 系数 (8,)
+            b_coeffs: 八元数 B 系数 (8,)
+
+        Returns:
+            A ⊙ B 结果系数 (8,)
+        """
+        self.operation_count += 1
+        return self.lut.compute_product(a_coeffs, b_coeffs)
+
+    def batch_multiply(self, a_list: List[np.ndarray], b_list: List[np.ndarray]) -> List[np.ndarray]:
+        """
+        批量阴龙积计算
+
+        Args:
+            a_list: 八元数 A 系数列表
+            b_list: 八元数 B 系数列表
+
+        Returns:
+            结果列表
+        """
+        results = []
+        for a, b in zip(a_list, b_list):
+            results.append(self.odon_multiply(a, b))
+        return results
+
+    def verify_moufang(self, trials: int = 100) -> Dict:
+        """验证 Moufang 恒等式"""
+        return self.lut.verify_moufang_identity(trials)
+
+    def get_stats(self) -> Dict:
+        """获取 ALU 统计"""
+        return {
+            "operation_count": self.operation_count,
+            "total_energy": self.operation_count * self.energy_per_op,
+            "lut_size": len(self.lut.lut),
+        }
+
+
+class CGDConstraintEngine:
+    """
+    CGD 约束引擎: 校验 A1-A5 五条约束
+
+    约束列表:
+        A1: Moufang 恒等式 z⊙(x⊙(y⊙z)) = ((z⊙x)⊙y)⊙z
+        A2: Moufang 恒等式 (x⊙y)⊙(z⊙x) = x⊙((y⊙z)⊙x)
+        A3: 弱结合律特例 (x⊙y)⊙z = x⊙(y⊙(x⊙z))
+        A4: 范数守恒 N(a⊙b) = N(a)·N(b)
+        A5: 非结合性验证 (a⊙b)⊙c ≠ a⊙(b⊙c) (一般情况)
+    """
+
+    def __init__(self, lut: Optional[FanoPlaneLUT] = None, tol: float = 1e-10):
+        self.lut = lut or FanoPlaneLUT()
+        self.tol = tol
+        self.constraint_results: Dict[str, bool] = {}
+
+    def check_all(self, trials: int = 50) -> Dict[str, bool]:
+        """
+        校验全部 A1-A5 约束
+
+        Args:
+            trials: 每条约束的随机试验次数
+
+        Returns:
+            {A1: bool, A2: bool, A3: bool, A4: bool, A5: bool}
+        """
+        self.constraint_results = {
+            "A1": self._check_moufang_a1(trials),
+            "A2": self._check_moufang_a2(trials),
+            "A3": self._check_weak_assoc_a3(trials),
+            "A4": self._check_norm_conservation_a4(trials),
+            "A5": self._check_non_associativity_a5(trials),
+        }
+        return self.constraint_results
+
+    def _check_moufang_a1(self, trials: int) -> bool:
+        """A1: z⊙(x⊙(y⊙z)) = ((z⊙x)⊙y)⊙z"""
+        pass_count = 0
+        for _ in range(trials):
+            x, y, z = np.random.randn(8, 3)
+            yz = self.lut.compute_product(y, z)
+            xyz = self.lut.compute_product(x, yz)
+            left = self.lut.compute_product(z, xyz)
+
+            zx = self.lut.compute_product(z, x)
+            zxy = self.lut.compute_product(zx, y)
+            right = self.lut.compute_product(zxy, z)
+
+            if np.allclose(left, right, atol=self.tol):
+                pass_count += 1
+        return pass_count >= trials * 0.95
+
+    def _check_moufang_a2(self, trials: int) -> bool:
+        """A2: (x⊙y)⊙(z⊙x) = x⊙((y⊙z)⊙x)"""
+        pass_count = 0
+        for _ in range(trials):
+            x, y, z = np.random.randn(8, 3)
+            xy = self.lut.compute_product(x, y)
+            zx = self.lut.compute_product(z, x)
+            left = self.lut.compute_product(xy, zx)
+
+            yz = self.lut.compute_product(y, z)
+            yzx = self.lut.compute_product(yz, x)
+            right = self.lut.compute_product(x, yzx)
+
+            if np.allclose(left, right, atol=self.tol):
+                pass_count += 1
+        return pass_count >= trials * 0.95
+
+    def _check_weak_assoc_a3(self, trials: int) -> bool:
+        """A3: (x⊙y)⊙z = x⊙(y⊙(x⊙z)) (x=z 特例)"""
+        pass_count = 0
+        for _ in range(trials):
+            x, y, z = np.random.randn(8, 3)
+            xy = self.lut.compute_product(x, y)
+            left = self.lut.compute_product(xy, z)
+
+            xz = self.lut.compute_product(x, z)
+            yxz = self.lut.compute_product(y, xz)
+            right = self.lut.compute_product(x, yxz)
+
+            if np.allclose(left, right, atol=self.tol):
+                pass_count += 1
+        return pass_count >= trials * 0.95
+
+    def _check_norm_conservation_a4(self, trials: int) -> bool:
+        """A4: 范数守恒 N(a⊙b) = N(a)·N(b)"""
+        pass_count = 0
+        for _ in range(trials):
+            a = np.random.randn(8)
+            b = np.random.randn(8)
+            ab = self.lut.compute_product(a, b)
+
+            n_a = float(np.sum(a ** 2))
+            n_b = float(np.sum(b ** 2))
+            n_ab = float(np.sum(ab ** 2))
+
+            if abs(n_ab - n_a * n_b) < self.tol * max(n_a * n_b, 1.0):
+                pass_count += 1
+        return pass_count >= trials * 0.95
+
+    def _check_non_associativity_a5(self, trials: int) -> bool:
+        """A5: (a⊙b)⊙c ≠ a⊙(b⊙c) (一般情况应不满足结合律)"""
+        non_assoc_count = 0
+        for _ in range(trials):
+            a, b, c = np.random.randn(8, 3)
+            ab = self.lut.compute_product(a, b)
+            left = self.lut.compute_product(ab, c)
+
+            bc = self.lut.compute_product(b, c)
+            right = self.lut.compute_product(a, bc)
+
+            if not np.allclose(left, right, atol=self.tol):
+                non_assoc_count += 1
+        # 八元数应大部分不满足结合律
+        return non_assoc_count >= trials * 0.5
+
+
+class TProcessorV2(TProcessorV1):
+    """
+    T-Processor v2.0: 集成 Moufang-ALU 的完整封装
+
+    在 V1 基础上新增:
+    - MoufangALU: 八元数阴龙积 ⊙ 运算单元
+    - FanoPlaneLUT: 7×7 快速查表
+    - CGDConstraintEngine: A1-A5 约束校验
+
+    工作流程:
+    1. 输入 → RRAM Crossbar (存算一体前向传播)
+    2. 输出 → Dead-Zero Comparator (死零检测)
+    3. 候选 → MUS Arbiter (歧义仲裁)
+    4. 触发 → κ-Snap Scheduler (事件调度)
+    5. ALU  → Moufang-ALU (八元数阴龙积计算)
+    6. 约束 → CGDConstraintEngine (A1-A5 校验)
+    7. 输出 → 结构化结果
+    """
+
+    def __init__(self, n_inputs: int, n_outputs: int):
+        super().__init__(n_inputs, n_outputs)
+        self.moufang_alu = MoufangALU()
+        self.cgd_engine = CGDConstraintEngine(self.moufang_alu.lut)
+
+    def tick(self, inputs: np.ndarray, prev_state: Optional[np.ndarray] = None) -> Dict:
+        """
+        时间步推进 (T-Processor V2 周期)
+
+        Args:
+            inputs: 输入向量
+            prev_state: 上一时间步状态
+
+        Returns:
+            结果字典（含 V1 结果 + ALU/CGD 结果）
+        """
+        # V1 基础流程
+        v1_result = super().tick(inputs, prev_state)
+
+        # ALU 计算：将 arbitrated_output 转为八元数系数进行阴龙积
+        arb = np.array(v1_result["arbitrated_output"], dtype=np.float64)
+        # 用 8 维系数表示（前 8 维，不足补零）
+        oct_coeffs = np.zeros(8, dtype=np.float64)
+        n = min(len(arb), 8)
+        oct_coeffs[:n] = arb[:n]
+
+        # 阴龙积自乘（ALU 内部测试）
+        alu_result = self.moufang_alu.odon_multiply(oct_coeffs, oct_coeffs)
+
+        v1_result["alu_result"] = alu_result.tolist()
+        v1_result["alu_stats"] = self.moufang_alu.get_stats()
+        v1_result["version"] = "v2.0"
+
+        return v1_result
+
+    def check_constraints(self, trials: int = 50) -> Dict[str, bool]:
+        """校验 CGD A1-A5 约束"""
+        return self.cgd_engine.check_all(trials)
+
+    def get_stats(self) -> Dict:
+        """获取完整统计（含 V2 扩展）"""
+        stats = super().get_stats()
+        stats["moufang_alu"] = self.moufang_alu.get_stats()
+        stats["version"] = "v2.0"
+        return stats
+
+
+# ============================================================
 # 硅光子接口 (未来扩展)
 # ============================================================
 

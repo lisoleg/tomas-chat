@@ -34,6 +34,51 @@ except ImportError:
 
 
 # ============================================================
+# 三层对抗补丁防御 — 枚举和配置
+# ============================================================
+
+class DefenseLayer(str, Enum):
+    """防御层级 — L1/L2/L3 递进式"""
+    L1_MULTIMODAL = "L1"
+    L2_KAPPA_GATE = "L2"
+    L3_PHYSICS = "L3"
+
+
+@dataclass
+class DefenseThresholds:
+    """防御阈值配置
+    
+    Attributes:
+        l1_confidence: τ₁ — L1 多模态交叉验证置信度阈值
+        l2_kappa:      τ₂ — L2 κ-Gate 异常检测阈值
+        l3_physics:    τ₃ — L3 物理一致性过滤阈值
+    """
+    l1_confidence: float = 0.7
+    l2_kappa: float = 0.5
+    l3_physics: float = 0.8
+
+
+@dataclass
+class DefenseResult:
+    """防御检查结果
+    
+    Attributes:
+        passed:   是否通过全部防御层
+        layer:    触发拦截的层级（通过时为 L3）
+        l1_score: L1 多模态一致性分数 [0,1]
+        l2_score: L2 κ 值（越小越正常）
+        l3_score: L3 物理一致性分数 [0,1]
+        alert:    拦截原因描述（通过时为 None）
+    """
+    passed: bool
+    layer: DefenseLayer
+    l1_score: float = 0.0
+    l2_score: float = 0.0
+    l3_score: float = 0.0
+    alert: Optional[str] = None
+
+
+# ============================================================
 # 数据结构
 # ============================================================
 
@@ -855,3 +900,156 @@ if __name__ == "__main__":
               f"MUS={det['metadata'].get('mus_status', 'N/A')}")
 
     print("\n=== 演示完成 ===")
+
+
+# ============================================================
+# 三层对抗补丁防御管线 (P0-3)
+# ============================================================
+
+class DefensePipeline:
+    """三层对抗补丁防御管线
+    
+    L1 → L2 → L3 递进式防御，任一层触发则拦截。
+    
+    Attributes:
+        thresholds:    防御阈值配置
+        l1_validator:  L1 多模态交叉验证器（T11 注入）
+        l2_detector:   L2 κ-Gate 异常检测器（T10 注入）
+        l3_filter:     L3 物理一致性过滤器（T12 注入）
+    
+    示例用法:
+        >>> pipeline = DefensePipeline()
+        >>> pipeline.set_l1(MultiModalCrossValidator())
+        >>> pipeline.set_l2(KappaGateDetector())
+        >>> pipeline.set_l3(PhysicalConsistencyFilter())
+        >>> result = pipeline.check({"text": "hello", "image": "..."})
+        >>> print(result.passed)
+    """
+    
+    def __init__(self, thresholds: Optional[DefenseThresholds] = None):
+        self.thresholds = thresholds or DefenseThresholds()
+        self.l1_validator = None   # 将由 T11 注入
+        self.l2_detector = None    # 将由 T10 注入
+        self.l3_filter = None      # 将由 T12 注入
+    
+    def set_l1(self, validator):
+        """注入 L1 多模态交叉验证器
+        
+        Args:
+            validator: 需实现 validate(input_data: dict) -> (passed, score)
+        """
+        self.l1_validator = validator
+    
+    def set_l2(self, detector):
+        """注入 L2 κ-Gate 异常检测器
+        
+        Args:
+            detector: 需实现 detect(input_data: dict) -> (kappa_score, alert_msg)
+        """
+        self.l2_detector = detector
+    
+    def set_l3(self, filter_obj):
+        """注入 L3 物理一致性过滤器
+        
+        Args:
+            filter_obj: 需实现 filter(input_data: dict) -> (passed, score)
+        """
+        self.l3_filter = filter_obj
+    
+    def check(self, input_data: dict) -> DefenseResult:
+        """执行三层防御检查
+        
+        流水线：L1 → L2 → L3，任一层未通过则立即返回拦截。
+        
+        Args:
+            input_data: 输入数据字典，可包含 text/image/structure 等字段
+        
+        Returns:
+            DefenseResult — 防御检查结果
+        """
+        # L1: 多模态交叉验证
+        if self.l1_validator:
+            l1_passed, l1_score = self.l1_validator.validate(input_data)
+            if not l1_passed or l1_score < self.thresholds.l1_confidence:
+                return DefenseResult(
+                    passed=False,
+                    layer=DefenseLayer.L1_MULTIMODAL,
+                    l1_score=l1_score,
+                    alert=f"L1 多模态交叉验证未通过 (score={l1_score:.3f} < "
+                          f"τ₁={self.thresholds.l1_confidence})"
+                )
+        else:
+            l1_score = 1.0  # L1 未配置则默认通过
+        
+        # L2: κ-Gate 异常检测
+        if self.l2_detector:
+            kappa_score, alert_msg = self.l2_detector.detect(input_data)
+            if kappa_score > self.thresholds.l2_kappa:
+                return DefenseResult(
+                    passed=False,
+                    layer=DefenseLayer.L2_KAPPA_GATE,
+                    l1_score=l1_score,
+                    l2_score=kappa_score,
+                    alert=f"L2 κ-Gate 异常检测触发 (κ={kappa_score:.3f} > "
+                          f"τ₂={self.thresholds.l2_kappa}): {alert_msg}"
+                )
+        else:
+            kappa_score = 0.0
+        
+        # L3: 物理一致性过滤
+        if self.l3_filter:
+            l3_passed, l3_score = self.l3_filter.filter(input_data)
+            if not l3_passed or l3_score < self.thresholds.l3_physics:
+                return DefenseResult(
+                    passed=False,
+                    layer=DefenseLayer.L3_PHYSICS,
+                    l1_score=l1_score,
+                    l2_score=kappa_score,
+                    l3_score=l3_score,
+                    alert=f"L3 物理一致性过滤未通过 (score={l3_score:.3f} < "
+                          f"τ₃={self.thresholds.l3_physics})"
+                )
+        else:
+            l3_score = 1.0
+        
+        return DefenseResult(
+            passed=True,
+            layer=DefenseLayer.L3_PHYSICS,
+            l1_score=l1_score,
+            l2_score=kappa_score,
+            l3_score=l3_score
+        )
+    
+    def redteam_test(self, attack_input: dict) -> dict:
+        """Red-team 对抗测试 — 对所有三层发起对抗攻击并记录结果
+        
+        Args:
+            attack_input: 对抗攻击输入，需包含 attack_type 和 input 字段
+        
+        Returns:
+            {
+                "attack_type": str,
+                "detected": bool,
+                "defense_layer": str | None,
+                "bypass": bool,
+                "details": dict,
+            }
+        """
+        results = {
+            "attack_type": attack_input.get("attack_type", "unknown"),
+            "detected": False,
+            "defense_layer": None,
+            "bypass": False,
+            "details": {}
+        }
+        defense_result = self.check(attack_input.get("input", {}))
+        results["detected"] = not defense_result.passed
+        results["defense_layer"] = defense_result.layer.value if not defense_result.passed else None
+        results["bypass"] = defense_result.passed
+        results["details"] = {
+            "l1_score": defense_result.l1_score,
+            "l2_score": defense_result.l2_score,
+            "l3_score": defense_result.l3_score,
+            "alert": defense_result.alert
+        }
+        return results

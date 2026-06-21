@@ -689,3 +689,345 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ============================================================
+# MultiLangAdapter (Reasonix 编程智能体集成)
+# ============================================================
+
+
+class MultiLangAdapter:
+    """多语言代码蒸馏适配器。
+
+    在 LLMDistiller 基础上扩展多语言支持，
+    将不同编程语言的代码蒸馏为统一的 EML 张量表示，
+    并支持从张量逆向重建对应语言的代码。
+
+    支持语言：Python, JavaScript, C/C++, Rust, Go, Java
+
+    方法：
+        distill_code(code, lang) -> np.ndarray: 将代码蒸馏为 EML 张量
+        reconstruct_code(tensor, lang) -> str: 从张量重建代码
+    """
+
+    # 语言标识 → 特征维度映射
+    _LANG_DIM_MAP = {
+        "python":     {"syntax_dim": 32, "semantic_dim": 32, "structural_dim": 32, "total": 96},
+        "javascript": {"syntax_dim": 32, "semantic_dim": 32, "structural_dim": 32, "total": 96},
+        "c":          {"syntax_dim": 28, "semantic_dim": 28, "structural_dim": 28, "total": 84},
+        "cpp":        {"syntax_dim": 28, "semantic_dim": 28, "structural_dim": 28, "total": 84},
+        "rust":       {"syntax_dim": 30, "semantic_dim": 30, "structural_dim": 30, "total": 90},
+        "go":         {"syntax_dim": 30, "semantic_dim": 30, "structural_dim": 30, "total": 90},
+        "java":       {"syntax_dim": 30, "semantic_dim": 30, "structural_dim": 30, "total": 90},
+    }
+
+    # 语言特征关键词（用于语义维度编码）
+    _LANG_KEYWORDS = {
+        "python":     ["def", "class", "import", "if", "for", "while", "try", "lambda", "yield", "with"],
+        "javascript": ["function", "const", "let", "var", "async", "await", "class", "export", "import", "promise"],
+        "c":          ["int", "float", "char", "struct", "typedef", "void", "if", "for", "while", "switch"],
+        "cpp":        ["class", "template", "namespace", "virtual", "override", "const", "auto", "nullptr", "static", "inline"],
+        "rust":       ["fn", "let", "mut", "impl", "trait", "pub", "match", "enum", "struct", "use"],
+        "go":         ["func", "var", "const", "type", "struct", "interface", "package", "import", "range", "defer"],
+        "java":       ["class", "interface", "extends", "implements", "public", "private", "static", "final", "void", "new"],
+    }
+
+    def __init__(self, eight_dim: int = 8):
+        """初始化多语言适配器。
+
+        Args:
+            eight_dim: 八元数场维度（默认 8）
+        """
+        self.eight_dim = eight_dim
+        self._distillation_cache: Dict[str, np.ndarray] = {}
+
+    def distill_code(self, code: str, lang: str = "python") -> np.ndarray:
+        """将代码蒸馏为 EML 张量表示。
+
+        Args:
+            code: 源代码字符串
+            lang: 编程语言标识（默认 "python"）
+
+        Returns:
+            np.ndarray: 蒸馏后的 EML 张量
+                形状为 (total_dim + eight_dim)，包含：
+                - syntax_dim: 语法特征
+                - semantic_dim: 语义特征（关键词频率）
+                - structural_dim: 结构特征（嵌套深度、行数等）
+                - eight_dim: 八元数场扩展维度
+        """
+        lang_lower = lang.lower()
+        if lang_lower not in self._LANG_DIM_MAP:
+            raise ValueError(f"不支持的语言: {lang}。支持: {list(self._LANG_DIM_MAP.keys())}")
+
+        dim_config = self._LANG_DIM_MAP[lang_lower]
+        total_dim = dim_config["total"]
+
+        # 语法特征：行级编码
+        syntax_features = self._encode_syntax(code, dim_config["syntax_dim"])
+
+        # 语义特征：关键词频率编码
+        semantic_features = self._encode_semantic(code, lang_lower, dim_config["semantic_dim"])
+
+        # 结构特征：嵌套深度、行数等
+        structural_features = self._encode_structural(code, dim_config["structural_dim"])
+
+        # 八元数场扩展：将 total_dim 投影到 eight_dim
+        oct_projection = self._project_to_octonion(
+            np.concatenate([syntax_features, semantic_features, structural_features]),
+            self.eight_dim,
+        )
+
+        # 合并：[syntax | semantic | structural | octonion]
+        tensor = np.concatenate([syntax_features, semantic_features, structural_features, oct_projection])
+        return tensor
+
+    def reconstruct_code(self, tensor: np.ndarray, lang: str = "python") -> str:
+        """从 EML 张量逆向重建代码。
+
+        Args:
+            tensor: 蒸馏后的 EML 张量
+            lang: 目标编程语言标识
+
+        Returns:
+            str: 重建的代码字符串（骨架代码）
+        """
+        lang_lower = lang.lower()
+        if lang_lower not in self._LANG_DIM_MAP:
+            raise ValueError(f"不支持的语言: {lang}。支持: {list(self._LANG_DIM_MAP.keys())}")
+
+        dim_config = self._LANG_DIM_MAP[lang_lower]
+        total_dim = dim_config["total"]
+
+        # 分离各维度
+        syntax_dim = dim_config["syntax_dim"]
+        semantic_dim = dim_config["semantic_dim"]
+        structural_dim = dim_config["structural_dim"]
+
+        syntax_feat = tensor[:syntax_dim]
+        semantic_feat = tensor[syntax_dim:syntax_dim + semantic_dim]
+        structural_feat = tensor[syntax_dim + semantic_dim:syntax_dim + semantic_dim + structural_dim]
+
+        # 从结构特征提取行数
+        n_lines = max(1, int(structural_feat[0] * 50))  # structural_feat[0] ≈ line_count/50
+
+        # 从语义特征提取关键词
+        keywords = self._LANG_KEYWORDS[lang_lower]
+        active_keywords = []
+        for i, kw in enumerate(keywords):
+            if i < len(semantic_feat) and semantic_feat[i] > 0.3:
+                active_keywords.append(kw)
+
+        # 重建骨架代码
+        skeleton = self._build_skeleton(lang_lower, n_lines, active_keywords)
+        return skeleton
+
+    def _encode_syntax(self, code: str, dim: int) -> np.ndarray:
+        """语法特征编码：行级 hash → 特征向量。"""
+        lines = code.splitlines()
+        features = np.zeros(dim)
+        for i, line in enumerate(lines):
+            if i >= dim:
+                break
+            # 简单编码：行长度归一化 + 行类型权重
+            line_stripped = line.strip()
+            line_len = min(len(line_stripped) / 100.0, 1.0)
+            # 行类型权重
+            if line_stripped.startswith("#") or line_stripped.startswith("//"):
+                type_weight = 0.1  # 注释
+            elif line_stripped.endswith("{") or line_stripped.endswith(":"):
+                type_weight = 0.8  # 块开始
+            elif line_stripped.endswith("}") or line_stripped == "":
+                type_weight = 0.3  # 块结束/空行
+            else:
+                type_weight = 0.5  # 一般语句
+            features[i] = line_len * type_weight
+        return features
+
+    def _encode_semantic(self, code: str, lang: str, dim: int) -> np.ndarray:
+        """语义特征编码：关键词频率。"""
+        features = np.zeros(dim)
+        keywords = self._LANG_KEYWORDS.get(lang, [])
+        code_lower = code.lower()
+        for i, kw in enumerate(keywords):
+            if i >= dim:
+                break
+            # 关键词出现次数（归一化）
+            count = code_lower.count(kw.lower())
+            features[i] = min(count / 10.0, 1.0)
+        return features
+
+    def _encode_structural(self, code: str, dim: int) -> np.ndarray:
+        """结构特征编码：嵌套深度、行数、缩进分布等。"""
+        features = np.zeros(dim)
+        lines = code.splitlines()
+
+        # 特征 0: 行数归一化
+        features[0] = len(lines) / 50.0
+
+        # 特征 1: 最大嵌套深度归一化
+        max_depth = 0
+        for line in lines:
+            indent = len(line) - len(line.lstrip())
+            depth = indent // 4
+            max_depth = max(max_depth, depth)
+        features[1] = max_depth / 10.0
+
+        # 特征 2: 空行比例
+        empty_lines = sum(1 for l in lines if l.strip() == "")
+        features[2] = empty_lines / max(len(lines), 1)
+
+        # 特征 3: 注释比例
+        comment_lines = sum(1 for l in lines if l.strip().startswith("#") or l.strip().startswith("//"))
+        features[3] = comment_lines / max(len(lines), 1)
+
+        # 特征 4: 函数/方法数估计
+        func_keywords = ["def ", "function ", "fn ", "func ", "void ", "int ", "public "]
+        func_count = sum(1 for l in lines if any(kw in l for kw in func_keywords))
+        features[4] = min(func_count / 20.0, 1.0)
+
+        return features
+
+    def _project_to_octonion(self, features: np.ndarray, dim: int) -> np.ndarray:
+        """将高维特征投影到八元数场维度。"""
+        # 简单线性投影 + 非线性激活
+        n = len(features)
+        projection = np.zeros(dim)
+        for i in range(dim):
+            # 每8个原始特征维度映射到一个八元数分量
+            start = (i * n) // dim
+            end = ((i + 1) * n) // dim
+            if start < end:
+                projection[i] = np.mean(features[start:end])
+            elif start < n:
+                projection[i] = features[start]
+        # 非线性激活
+        projection = np.tanh(projection)
+        return projection
+
+    def _build_skeleton(self, lang: str, n_lines: int, keywords: List[str]) -> str:
+        """根据语言和关键词重建骨架代码。"""
+        # 语言模板
+        templates = {
+            "python": [
+                "# Reconstructed skeleton (Python)",
+                "import os",
+                "",
+                "def main():",
+                "    pass",
+                "",
+                "if __name__ == '__main__':",
+                "    main()",
+            ],
+            "javascript": [
+                "// Reconstructed skeleton (JavaScript)",
+                "const main = () => {",
+                "};",
+                "",
+                "main();",
+            ],
+            "c": [
+                "// Reconstructed skeleton (C)",
+                "#include <stdio.h>",
+                "",
+                "int main() {",
+                "    return 0;",
+                "}",
+            ],
+            "cpp": [
+                "// Reconstructed skeleton (C++)",
+                "#include <iostream>",
+                "",
+                "int main() {",
+                "    return 0;",
+                "}",
+            ],
+            "rust": [
+                "// Reconstructed skeleton (Rust)",
+                "fn main() {",
+                "}",
+            ],
+            "go": [
+                "// Reconstructed skeleton (Go)",
+                "package main",
+                "",
+                "func main() {",
+                "}",
+            ],
+            "java": [
+                "// Reconstructed skeleton (Java)",
+                "public class Main {",
+                "    public static void main(String[] args) {",
+                "    }",
+                "}",
+            ],
+        }
+
+        base = templates.get(lang, templates["python"])
+        # 根据活跃关键词插入额外行
+        extra_lines = []
+        keyword_insert_map = {
+            "class":      f"class Reconstructed {{ ... }}",
+            "struct":     f"struct Reconstructed {{ ... }}",
+            "interface":  f"interface IReconstructed {{ ... }}",
+            "trait":      f"trait Reconstructed {{ ... }}",
+            "enum":       f"enum Reconstructed {{ ... }}",
+            "try":        f"try {{ ... }} catch (e) {{ ... }}",
+            "lambda":     f"lambda_fn = lambda x: x",
+            "async":      f"async function asyncFn() {{ ... }}",
+            "match":      f"match value {{ ... }}",
+            "template":   f"template<typename T> ...",
+            "namespace":  f"namespace reconstructed {{ ... }}",
+        }
+        for kw in keywords:
+            if kw in keyword_insert_map and kw not in ["def", "function", "fn", "func", "void", "int", "public"]:
+                extra_lines.append(keyword_insert_map[kw])
+
+        skeleton_lines = base[:2] + extra_lines + base[2:]
+        # 限制行数
+        if len(skeleton_lines) > max(n_lines, len(base)):
+            skeleton_lines = skeleton_lines[:max(n_lines, len(base))]
+
+        return "\n".join(skeleton_lines)
+
+
+# --- MultiLangAdapter 自测 ---
+if __name__ == "__main__" and "MultiLangAdapter" in dir() and len(dir()) > 5:
+    print("\n=== MultiLangAdapter 自测 ===")
+    adapter = MultiLangAdapter(eight_dim=8)
+
+    # 1. Python 蒸馏
+    py_code = "def hello():\n    return 42\n\nclass Foo:\n    pass\n"
+    tensor = adapter.distill_code(py_code, "python")
+    print(f"  Python 蒸馏: shape={tensor.shape}")
+    assert tensor.shape == (96 + 8,)  # total_dim + eight_dim
+    print("  [PASS] Python 蒸馏张量维度")
+
+    # 2. JavaScript 蒸馏
+    js_code = "function main() {\n  const x = 1;\n  return x;\n}\n"
+    js_tensor = adapter.distill_code(js_code, "javascript")
+    print(f"  JavaScript 蒸馏: shape={js_tensor.shape}")
+    assert js_tensor.shape == (96 + 8,)
+    print("  [PASS] JavaScript 蒸馏张量维度")
+
+    # 3. C 蒸馏
+    c_code = "int main() {\n  return 0;\n}\n"
+    c_tensor = adapter.distill_code(c_code, "c")
+    print(f"  C 蒸馏: shape={c_tensor.shape}")
+    assert c_tensor.shape == (84 + 8,)
+    print("  [PASS] C 蒸馏张量维度")
+
+    # 4. 逆向重建
+    reconstructed = adapter.reconstruct_code(tensor, "python")
+    print(f"  Python 重建:\n{reconstructed}")
+    assert "def main" in reconstructed or "main" in reconstructed
+    print("  [PASS] Python 逆向重建")
+
+    # 5. 不支持的语言
+    try:
+        adapter.distill_code("code", "cobol")
+        print("  [FAIL] 应拒绝不支持的语言")
+    except ValueError:
+        print("  [PASS] 不支持语言拒绝")
+
+    print("=== MultiLangAdapter 自测全部通过 ===")
