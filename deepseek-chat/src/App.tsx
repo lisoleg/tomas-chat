@@ -1,38 +1,44 @@
 // App v2 — TOMAS Web UI 全面升级
 // 集成仪表盘、HY World 3D、审计监控、记忆浏览器、防火墙/路由面板
-import { useCallback, useEffect, useRef, useState } from 'react'
+// 代码分割：首屏必需组件静态导入，其余面板 React.lazy 按需加载
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { loadEMLFromBuffer, TokenBridgeClient } from './api/distiller'
 import { ApiKeyModal } from './components/ApiKeyModal'
 import { ChatArea } from './components/ChatArea'
-import { DistillPanel } from './components/DistillPanel'
-import { TechDocs } from './components/TechDocs'
 import Dashboard from './components/Dashboard'
-import WorldModelViewer from './components/WorldModelViewer'
-import AuditMonitor from './components/AuditMonitor'
-import MemoryBrowser from './components/MemoryBrowser'
-import LogsAndRouterPanel from './components/LogsAndRouterPanel'
-import IDOPanel from './components/IDOPanel'
-import FDEPanel from './components/FDEPanel'
-import DualTimelinePanel from './components/DualTimelinePanel'
-import ITOTPanel from './components/ITOTPanel'
-import TProcessorPanel from './components/TProcessorPanel'
-import TShieldPanel from './components/TShieldPanel'
-import AEGISPanel from './components/AEGISPanel'
-import HypergraphPanel from './components/HypergraphPanel'
-import V2Panel from './components/V2Panel'
-import AlignmentTriadPanel from './components/AlignmentTriadPanel'
-import GoalAgentPanel from './components/GoalAgentPanel'
-import CognitiveHealthPanel from './components/CognitiveHealthPanel'
-import GrillMePanel from './components/GrillMePanel'
-import { LuZhaoPanel } from './components/LuZhaoPanel'
-import { GATPanel } from './components/GATPanel'
-import { FinancialWorldPanel } from './components/FinancialWorldPanel'
-import { TokenizedEconomyPanel } from './components/TokenizedEconomyPanel'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useToast } from './components/Toast'
 import type { AppMode, ChatEMLState } from './types'
 import { ErrorBoundary } from './components/ErrorBoundary'
+
+// ── 按需加载的面板 (React.lazy) ──────────────────────
+// 具名导出的组件需要 .then(m => ({ default: m.X }))
+const DistillPanel = lazy(() => import('./components/DistillPanel').then(m => ({ default: m.DistillPanel })))
+const TechDocs = lazy(() => import('./components/TechDocs').then(m => ({ default: m.TechDocs })))
+// 默认导出的组件直接 import
+const WorldModelViewer = lazy(() => import('./components/WorldModelViewer'))
+const AuditMonitor = lazy(() => import('./components/AuditMonitor'))
+const MemoryBrowser = lazy(() => import('./components/MemoryBrowser'))
+const LogsAndRouterPanel = lazy(() => import('./components/LogsAndRouterPanel'))
+const IDOPanel = lazy(() => import('./components/IDOPanel'))
+const FDEPanel = lazy(() => import('./components/FDEPanel'))
+const DualTimelinePanel = lazy(() => import('./components/DualTimelinePanel'))
+const ITOTPanel = lazy(() => import('./components/ITOTPanel'))
+const TProcessorPanel = lazy(() => import('./components/TProcessorPanel'))
+const TShieldPanel = lazy(() => import('./components/TShieldPanel'))
+const AEGISPanel = lazy(() => import('./components/AEGISPanel'))
+const HypergraphPanel = lazy(() => import('./components/HypergraphPanel'))
+const V2Panel = lazy(() => import('./components/V2Panel'))
+const AlignmentTriadPanel = lazy(() => import('./components/AlignmentTriadPanel'))
+const GoalAgentPanel = lazy(() => import('./components/GoalAgentPanel'))
+const CognitiveHealthPanel = lazy(() => import('./components/CognitiveHealthPanel'))
+const GrillMePanel = lazy(() => import('./components/GrillMePanel'))
+// v3.12 新面板（具名导出）
+const LuZhaoPanel = lazy(() => import('./components/LuZhaoPanel').then(m => ({ default: m.LuZhaoPanel })))
+const GATPanel = lazy(() => import('./components/GATPanel').then(m => ({ default: m.GATPanel })))
+const FinancialWorldPanel = lazy(() => import('./components/FinancialWorldPanel').then(m => ({ default: m.FinancialWorldPanel })))
+const TokenizedEconomyPanel = lazy(() => import('./components/TokenizedEconomyPanel').then(m => ({ default: m.TokenizedEconomyPanel })))
 
 // 默认自动加载的 EML 文件（设为空字符串则禁用自动加载，改由聊天时直接查 DB）
 const DEFAULT_EML_URL = ''
@@ -314,7 +320,9 @@ export default function App() {
 
       {/* Main content — full height, no top tab bar */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-        {renderPanel()}
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-textSecondary text-sm">加载中...</div>}>
+          {renderPanel()}
+        </Suspense>
       </main>
 
       <ApiKeyModal

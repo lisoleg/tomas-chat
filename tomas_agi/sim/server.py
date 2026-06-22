@@ -4567,9 +4567,289 @@ def v311_grill_release():
 # v3.12: 鲁兆 DNA / GAT 公理 / 金融市场 / 代币经济 API
 # ╚═════════════════════════════════════════════════════════════╝
 
-# ── 内存会话存储 ─────────────────────────────────────
-_financial_sessions: Dict[str, Dict[str, Any]] = {}
+# ── 会话存储 ─────────────────────────────────────────
+# _economy_sessions 仍然使用纯内存（代币经济体不持久化）
 _economy_sessions: Dict[str, Any] = {}
+
+# LOB 会话使用 SQLite 持久化（内存缓存 + 磁盘备份）
+
+
+class LOBSessionStore:
+    """LOB 会话持久化存储 — 内存缓存 + SQLite 持久化
+
+    服务器重启后自动从 SQLite 恢复所有 LOB 会话状态，
+    包括订单簿、做市商、熔断器等组件的完整状态。
+    """
+
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._init_table()
+        self._restore_from_db()
+
+    # ── SQLite 连接 ──────────────────────────────────
+
+    @staticmethod
+    def _get_conn():
+        """获取 SQLite 连接（复用 models.DB_PATH）"""
+        import sqlite3 as _sqlite3
+        return _sqlite3.connect(DB_PATH, timeout=30)
+
+    def _init_table(self):
+        """创建 LOB 会话持久化表"""
+        db = self._get_conn()
+        try:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS lob_sessions (
+                    session_id  TEXT PRIMARY KEY,
+                    created_at  REAL NOT NULL,
+                    lob_data    TEXT NOT NULL,
+                    mm_data     TEXT,
+                    cb_data     TEXT,
+                    sm_data     TEXT,
+                    enpv_data   TEXT,
+                    updated_at  REAL NOT NULL
+                )
+            """)
+            db.commit()
+        finally:
+            db.close()
+
+    # ── 序列化 / 反序列化 ────────────────────────────
+
+    @staticmethod
+    def _serialize_order(o) -> Dict[str, Any]:
+        """将 Order dataclass 序列化为 dict"""
+        return {
+            "order_id": o.order_id,
+            "side": o.side.value,
+            "price": o.price,
+            "size": o.size,
+            "timestamp": o.timestamp,
+            "filled": o.filled,
+        }
+
+    @staticmethod
+    def _deserialize_order(data: Dict[str, Any]):
+        """从 dict 重建 Order dataclass"""
+        from sim.financial_world_model import Order, OrderSide
+        return Order(
+            order_id=data["order_id"],
+            side=OrderSide(data["side"]),
+            price=data["price"],
+            size=data["size"],
+            timestamp=data["timestamp"],
+            filled=data["filled"],
+        )
+
+    def _serialize_lob(self, lob) -> Dict[str, Any]:
+        """序列化 LimitOrderBook"""
+        return {
+            "order_id_counter": lob._order_id_counter,
+            "bid_orders": [self._serialize_order(o) for o in lob.bid_orders],
+            "ask_orders": [self._serialize_order(o) for o in lob.ask_orders],
+            "last_mid": lob._last_mid,
+        }
+
+    def _deserialize_lob(self, data: Dict[str, Any]):
+        """重建 LimitOrderBook"""
+        from sim.financial_world_model import LimitOrderBook
+        lob = LimitOrderBook()
+        lob._order_id_counter = data["order_id_counter"]
+        lob._last_mid = data["last_mid"]
+        lob.bid_orders = [self._deserialize_order(o) for o in data["bid_orders"]]
+        lob.ask_orders = [self._deserialize_order(o) for o in data["ask_orders"]]
+        return lob
+
+    @staticmethod
+    def _serialize_mm(mm) -> Dict[str, Any]:
+        """序列化 MarketMaker"""
+        return {
+            "spread": mm.spread,
+            "inventory_target": mm.inventory_target,
+            "inventory": mm.inventory,
+            "profit_and_loss": mm.profit_and_loss,
+            "trade_count": mm.trade_count,
+            "last_quote_bid": mm._last_quote_bid,
+            "last_quote_ask": mm._last_quote_ask,
+        }
+
+    @staticmethod
+    def _deserialize_mm(data: Dict[str, Any]):
+        """重建 MarketMaker"""
+        from sim.financial_world_model import MarketMaker
+        mm = MarketMaker(
+            spread=data["spread"],
+            inventory_target=data["inventory_target"],
+        )
+        mm.inventory = data["inventory"]
+        mm.profit_and_loss = data["profit_and_loss"]
+        mm.trade_count = data["trade_count"]
+        mm._last_quote_bid = data["last_quote_bid"]
+        mm._last_quote_ask = data["last_quote_ask"]
+        return mm
+
+    @staticmethod
+    def _serialize_cb(cb) -> Dict[str, Any]:
+        """序列化 LiquidityCircuitBreaker"""
+        return {
+            "depth_threshold": cb.depth_threshold,
+            "entropy_threshold": cb.entropy_threshold,
+            "cooldown_seconds": cb.cooldown_seconds,
+            "state": cb.state.value,
+            "last_tripped": cb.last_tripped,
+            "trip_count": cb.trip_count,
+        }
+
+    @staticmethod
+    def _deserialize_cb(data: Dict[str, Any]):
+        """重建 LiquidityCircuitBreaker"""
+        from sim.financial_world_model import (
+            LiquidityCircuitBreaker, CircuitState,
+        )
+        cb = LiquidityCircuitBreaker(
+            depth_threshold=data["depth_threshold"],
+            entropy_threshold=data["entropy_threshold"],
+            cooldown_seconds=data["cooldown_seconds"],
+        )
+        cb.state = CircuitState(data["state"])
+        cb.last_tripped = data["last_tripped"]
+        cb.trip_count = data["trip_count"]
+        return cb
+
+    @staticmethod
+    def _serialize_sm(sm) -> Dict[str, Any]:
+        """序列化 SlippageModel"""
+        return {"base_slippage_rate": sm.base_slippage_rate}
+
+    @staticmethod
+    def _deserialize_sm(data: Dict[str, Any]):
+        """重建 SlippageModel"""
+        from sim.financial_world_model import SlippageModel
+        return SlippageModel(base_slippage_rate=data["base_slippage_rate"])
+
+    @staticmethod
+    def _serialize_enpv(enpv) -> Dict[str, Any]:
+        """序列化 ENPVCalculator"""
+        return {"risk_free_rate": enpv.risk_free_rate}
+
+    @staticmethod
+    def _deserialize_enpv(data: Dict[str, Any]):
+        """重建 ENPVCalculator"""
+        from sim.financial_world_model import ENPVCalculator
+        return ENPVCalculator(risk_free_rate=data["risk_free_rate"])
+
+    def _serialize_world(self, world: Dict[str, Any]) -> Dict[str, Any]:
+        """序列化完整金融世界模型"""
+        return {
+            "lob": self._serialize_lob(world["lob"]),
+            "mm": self._serialize_mm(world["market_maker"]),
+            "cb": self._serialize_cb(world["circuit_breaker"]),
+            "sm": self._serialize_sm(world["slippage_model"]),
+            "enpv": self._serialize_enpv(world["enpv_calculator"]),
+        }
+
+    def _deserialize_world(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """从序列化数据重建完整金融世界模型"""
+        from sim.financial_world_model import build_financial_world
+        # 先构建默认世界（确保所有 key 存在），再用持久化数据覆盖
+        world = build_financial_world()
+        if data.get("lob"):
+            world["lob"] = self._deserialize_lob(data["lob"])
+        if data.get("mm"):
+            world["market_maker"] = self._deserialize_mm(data["mm"])
+        if data.get("cb"):
+            world["circuit_breaker"] = self._deserialize_cb(data["cb"])
+        if data.get("sm"):
+            world["slippage_model"] = self._deserialize_sm(data["sm"])
+        if data.get("enpv"):
+            world["enpv_calculator"] = self._deserialize_enpv(data["enpv"])
+        return world
+
+    # ── 持久化操作 ────────────────────────────────────
+
+    def _restore_from_db(self):
+        """从 SQLite 恢复所有会话到内存缓存"""
+        db = self._get_conn()
+        try:
+            cur = db.execute(
+                "SELECT session_id, lob_data, mm_data, cb_data, sm_data, enpv_data "
+                "FROM lob_sessions"
+            )
+            for row in cur.fetchall():
+                session_id = row[0]
+                world_data = {
+                    "lob": json.loads(row[1]) if row[1] else {},
+                    "mm": json.loads(row[2]) if row[2] else {},
+                    "cb": json.loads(row[3]) if row[3] else {},
+                    "sm": json.loads(row[4]) if row[4] else {},
+                    "enpv": json.loads(row[5]) if row[5] else {},
+                }
+                try:
+                    self._cache[session_id] = self._deserialize_world(world_data)
+                    logger.info(f"[LOBStore] Restored session {session_id} from DB")
+                except Exception as e:
+                    logger.warning(
+                        f"[LOBStore] Failed to restore session {session_id}: {e}"
+                    )
+        finally:
+            db.close()
+
+    def _persist(self, session_id: str, world: Dict[str, Any]):
+        """将会话状态持久化到 SQLite"""
+        serialized = self._serialize_world(world)
+        lob_json = json.dumps(serialized["lob"])
+        mm_json = json.dumps(serialized["mm"])
+        cb_json = json.dumps(serialized["cb"])
+        sm_json = json.dumps(serialized["sm"])
+        enpv_json = json.dumps(serialized["enpv"])
+        now = time.time()
+        db = self._get_conn()
+        try:
+            db.execute(
+                """
+                INSERT OR REPLACE INTO lob_sessions
+                (session_id, created_at, lob_data, mm_data, cb_data, sm_data, enpv_data, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (session_id, now, lob_json, mm_json, cb_json, sm_json, enpv_json, now),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    # ── 公共接口 ──────────────────────────────────────
+
+    def create(self, session_id: str, world: Dict[str, Any]):
+        """创建新会话（内存 + SQLite）"""
+        self._cache[session_id] = world
+        self._persist(session_id, world)
+
+    def get(self, session_id: str):
+        """获取会话（先查内存缓存）"""
+        return self._cache.get(session_id)
+
+    def update(self, session_id: str, world: Dict[str, Any]):
+        """更新会话（内存 + SQLite）"""
+        self._cache[session_id] = world
+        self._persist(session_id, world)
+
+    def delete(self, session_id: str):
+        """删除会话（内存 + SQLite）"""
+        self._cache.pop(session_id, None)
+        db = self._get_conn()
+        try:
+            db.execute(
+                "DELETE FROM lob_sessions WHERE session_id = ?", (session_id,)
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    def __contains__(self, session_id: str) -> bool:
+        return session_id in self._cache
+
+
+_lob_store = LOBSessionStore()
 
 
 @app.route('/api/v3/luzhao/fibonacci', methods=['GET'])
@@ -4724,7 +5004,7 @@ def v312_financial_lob_create():
         import uuid
         session_id = str(uuid.uuid4())[:8]
         world = build_financial_world()
-        _financial_sessions[session_id] = world
+        _lob_store.create(session_id, world)
         return jsonify({"success": True, "session_id": session_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -4735,13 +5015,15 @@ def v312_financial_lob_add_order():
         from sim.financial_world_model import OrderSide
         data = request.get_json(silent=True) or {}
         sid = data.get("session_id", "")
-        if sid not in _financial_sessions:
+        world = _lob_store.get(sid)
+        if world is None:
             return jsonify({"error": "unknown session_id"}), 404
-        lob = _financial_sessions[sid]["lob"]
+        lob = world["lob"]
         side = OrderSide.BID if data.get("side", "bid") == "bid" else OrderSide.ASK
         price = float(data.get("price", 0))
         size = float(data.get("size", 0))
         order = lob.add_order(side, price, size)
+        _lob_store.update(sid, world)
         return jsonify({"success": True, "order_id": order.order_id,
                          "best_bid": lob.get_best_bid(), "best_ask": lob.get_best_ask(),
                          "mid_price": lob.mid_price, "spread": lob.spread})
@@ -4754,12 +5036,14 @@ def v312_financial_lob_match():
         from sim.financial_world_model import OrderSide
         data = request.get_json(silent=True) or {}
         sid = data.get("session_id", "")
-        if sid not in _financial_sessions:
+        world = _lob_store.get(sid)
+        if world is None:
             return jsonify({"error": "unknown session_id"}), 404
-        lob = _financial_sessions[sid]["lob"]
+        lob = world["lob"]
         side = OrderSide.BID if data.get("side", "bid") == "bid" else OrderSide.ASK
         size = float(data.get("size", 1.0))
         result = lob.match_market_order(side, size)
+        _lob_store.update(sid, world)
         return jsonify({"success": True,
                          "executed_size": result.executed_size,
                          "avg_price": result.avg_exec_price,
@@ -4770,9 +5054,10 @@ def v312_financial_lob_match():
 @app.route('/api/v3/financial/lob/<session_id>', methods=['GET'])
 def v312_financial_lob_status(session_id):
     try:
-        if session_id not in _financial_sessions:
+        world = _lob_store.get(session_id)
+        if world is None:
             return jsonify({"error": "unknown session_id"}), 404
-        lob = _financial_sessions[session_id]["lob"]
+        lob = world["lob"]
         return jsonify({
             "session_id": session_id,
             "best_bid": lob.get_best_bid(),
@@ -4792,11 +5077,13 @@ def v312_financial_mm_provide():
     try:
         data = request.get_json(silent=True) or {}
         sid = data.get("session_id", "")
-        if sid not in _financial_sessions:
+        world = _lob_store.get(sid)
+        if world is None:
             return jsonify({"error": "unknown session_id"}), 404
-        lob = _financial_sessions[sid]["lob"]
-        mm = _financial_sessions[sid]["market_maker"]
+        lob = world["lob"]
+        mm = world["market_maker"]
         bid_o, ask_o = mm.provide_liquidity(lob)
+        _lob_store.update(sid, world)
         return jsonify({"success": True,
                          "bid_price": bid_o.price if bid_o else None,
                          "ask_price": ask_o.price if ask_o else None})
@@ -4841,11 +5128,13 @@ def v312_financial_circuit_break():
     try:
         data = request.get_json(silent=True) or {}
         sid = data.get("session_id", "")
-        if sid not in _financial_sessions:
+        world = _lob_store.get(sid)
+        if world is None:
             return jsonify({"error": "unknown session_id"}), 404
-        cb = _financial_sessions[sid]["circuit_breaker"]
-        lob = _financial_sessions[sid]["lob"]
+        cb = world["circuit_breaker"]
+        lob = world["lob"]
         broken, state, reason = cb.check_circuit_break(lob)
+        _lob_store.update(sid, world)
         return jsonify({
             "broken": broken,
             "state": state.value,
