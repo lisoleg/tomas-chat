@@ -1,0 +1,4 @@
+instance_id,repo,has_patch,prediction,correct,error,duration_sec
+astropy__astropy-12907,astropy/astropy,True,,,404 Client Error: NOT FOUND for url: http://localhost:5000/api/chat,2.6
+astropy__astropy-14182,astropy/astropy,True,,,404 Client Error: NOT FOUND for url: http://localhost:5000/api/chat,2.03
+astropy__astropy-14365,astropy/astropy,True,,,404 Client Error: NOT FOUND for url: http://localhost:5000/api/chat,2.04

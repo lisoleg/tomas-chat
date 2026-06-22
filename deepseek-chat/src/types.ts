@@ -209,8 +209,8 @@ export interface DistillResult {
   emlBuffer: ArrayBuffer | null
 }
 
-/** 应用模式：仪表盘 / 聊天 / 蒸馏 / 世界模型 / 审计 / 记忆 / 防火墙&路由 / 文档 / IDO / FDE / 双时间 / IT-OT / T-Processor / T-Shield / AEGIS / 超图数据库 */
-export type AppMode = 'dashboard' | 'chat' | 'distill' | 'world-model' | 'audit' | 'memory' | 'firewall-router' | 'docs' | 'ido' | 'fde' | 'dual' | 'itot' | 'tprocessor' | 'tshield' | 'aegis' | 'hypergraph' | 'v2'
+/** 应用模式：仪表盘 / 聊天 / 蒸馏 / 世界模型 / 审计 / 记忆 / 防火墙&路由 / 文档 / IDO / FDE / 双时间 / IT-OT / T-Processor / T-Shield / AEGIS / 超图数据库 / 对齐三范式 / Goal导向 */
+export type AppMode = 'dashboard' | 'chat' | 'distill' | 'world-model' | 'audit' | 'memory' | 'firewall-router' | 'docs' | 'ido' | 'fde' | 'dual' | 'itot' | 'tprocessor' | 'tshield' | 'aegis' | 'hypergraph' | 'v2' | 'alignment-triad' | 'goal-agent' | 'cognitive-health' | 'grill-me' | 'luzhao-dna' | 'gat-axioms' | 'financial-world' | 'tokenized-economy'
 
 // ===================== Token Bridge 相关类型 =====================
 

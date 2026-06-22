@@ -20,6 +20,14 @@ import TShieldPanel from './components/TShieldPanel'
 import AEGISPanel from './components/AEGISPanel'
 import HypergraphPanel from './components/HypergraphPanel'
 import V2Panel from './components/V2Panel'
+import AlignmentTriadPanel from './components/AlignmentTriadPanel'
+import GoalAgentPanel from './components/GoalAgentPanel'
+import CognitiveHealthPanel from './components/CognitiveHealthPanel'
+import GrillMePanel from './components/GrillMePanel'
+import { LuZhaoPanel } from './components/LuZhaoPanel'
+import { GATPanel } from './components/GATPanel'
+import { FinancialWorldPanel } from './components/FinancialWorldPanel'
+import { TokenizedEconomyPanel } from './components/TokenizedEconomyPanel'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useToast } from './components/Toast'
@@ -229,6 +237,54 @@ export default function App() {
         return (
           <ErrorBoundary>
             <V2Panel />
+          </ErrorBoundary>
+        )
+      case 'alignment-triad':
+        return (
+          <ErrorBoundary>
+            <AlignmentTriadPanel />
+          </ErrorBoundary>
+        )
+      case 'goal-agent':
+        return (
+          <ErrorBoundary>
+            <GoalAgentPanel />
+          </ErrorBoundary>
+        )
+      case 'cognitive-health':
+        return (
+          <ErrorBoundary>
+            <CognitiveHealthPanel />
+          </ErrorBoundary>
+        )
+      case 'grill-me':
+        return (
+          <ErrorBoundary>
+            <GrillMePanel />
+          </ErrorBoundary>
+        )
+      case 'luzhao-dna':
+        return (
+          <ErrorBoundary>
+            <LuZhaoPanel />
+          </ErrorBoundary>
+        )
+      case 'gat-axioms':
+        return (
+          <ErrorBoundary>
+            <GATPanel />
+          </ErrorBoundary>
+        )
+      case 'financial-world':
+        return (
+          <ErrorBoundary>
+            <FinancialWorldPanel />
+          </ErrorBoundary>
+        )
+      case 'tokenized-economy':
+        return (
+          <ErrorBoundary>
+            <TokenizedEconomyPanel />
           </ErrorBoundary>
         )
       case 'docs':

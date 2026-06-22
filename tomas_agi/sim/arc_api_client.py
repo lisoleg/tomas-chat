@@ -50,7 +50,7 @@ class ARCAPIClient:
         base_url: str = DEFAULT_ARC_BASE_URL,
         timeout: int = 30,
     ):
-        self.api_key = api_key or os.environ.get("ARC_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.environ.get("ARC_API_KEY", "")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._session = None
@@ -348,7 +348,7 @@ def main():
         )
 
     # Check API key
-    api_key = args.api_key or os.environ.get("ARC_API_KEY", "")
+    api_key = args.api_key if args.api_key is not None else os.environ.get("ARC_API_KEY", "")
     if not api_key:
         print("=" * 60)
         print("ERROR: No ARC_API_KEY found!")

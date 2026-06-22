@@ -270,7 +270,7 @@ class IDOFiveElementTemplate:
             hessian_f = -0.05 * dim_scale * (1.0 - step / max_steps)
             kl = 0.2 * dim_scale * decay
             noise = random.uniform(-noise_scale, noise_scale)
-            new_i = max(0.0, min(self.compute_I(ricci, kl) + noise, 1.0))
+            new_i = max(1e-9, min(self.compute_I(ricci, kl) + noise, 1.0))
             grad = self.compute_gradient_norm(ricci, hessian_f)
             state.i_value, state.gradient_norm = new_i, grad
             state.monotonic = self.is_monotonic(new_i, current_i)

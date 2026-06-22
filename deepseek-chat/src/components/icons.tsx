@@ -369,3 +369,211 @@ export function IconX({ size, ...rest }: IconProps) {
   )
 }
 
+// ── v3.10 新增图标 ─────────────────────────────────
+
+/** 锁 */
+export function IconLock({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
+/** 心理学/思维 */
+export function IconPsychology({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2a2 2 0 0 1 2 2v4.5a1.5 1.5 0 0 0 1.5 1.5H20a2 2 0 0 1 0 4h-4.5a1.5 1.5 0 0 0-1.5 1.5V20a2 2 0 0 1-4 0v-4.5a1.5 1.5 0 0 0-1.5-1.5H4a2 2 0 0 1 0-4h4.5A1.5 1.5 0 0 0 10 8.5V4a2 2 0 0 1 2-2z" />
+    </svg>
+  )
+}
+
+/** 法槌 */
+export function IconGavel({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M14 13l-8 8 3 3 8-8" />
+      <path d="M4 19l-2 2" />
+      <path d="M20 3l-5 5" />
+      <path d="M15 3l6 6" />
+      <line x1="6" y1="13" x2="15" y2="4" />
+    </svg>
+  )
+}
+
+/** 警告三角 */
+export function IconWarning({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  )
+}
+
+/** 已验证/认证 */
+export function IconVerified({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l6.91-1.01z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  )
+}
+
+/** 趋势上升 */
+export function IconTrendingUp({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <polyline points="17 6 23 6 23 12" />
+    </svg>
+  )
+}
+
+/** 历史 */
+export function IconHistory({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  )
+}
+
+/** 描述/文档 */
+export function IconDescription({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <line x1="10" y1="9" x2="8" y2="9" />
+    </svg>
+  )
+}
+
+/** 速度 */
+export function IconSpeed({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2a10 10 0 1 0 10 10" />
+      <path d="M12 12l8-8" />
+      <path d="M2 16a5 5 0 0 1 5-5" />
+      <path d="M12 8a5 5 0 0 1 5 5" />
+    </svg>
+  )
+}
+
+/** 待处理 */
+export function IconPendingActions({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
+      <line x1="12" y1="6" x2="12" y2="12" />
+      <line x1="12" y1="12" x2="16" y2="14" />
+    </svg>
+  )
+}
+
+/** 目标/靶心 */
+export function IconTarget({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** 定锚 */
+export function IconAnchor({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="12" cy="5" r="3" />
+      <line x1="12" y1="22" x2="12" y2="8" />
+      <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+    </svg>
+  )
+}
+
+// ── v3.11 新增图标 ─────────────────────────────────
+
+/** 心跳/认知健康 */
+export function IconHeartbeat({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      <polyline points="9 11 11 13 15 9" />
+    </svg>
+  )
+}
+
+/** 搜索放大镜/审问 */
+export function IconSearchGavel({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+    </svg>
+  )
+}
+
+// ── v3.12 新增图标 ─────────────────────────────────
+
+/** DNA / 鲁兆 */
+export function IconDna({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2c-2 0-4 3-4 10s2 10 4 10 4-3 4-10-2-10-4-10z" fill="none" />
+      <path d="M8 2v20" />
+      <path d="M16 2v20" />
+      <circle cx="12" cy="5" r="1" fill="currentColor" />
+      <circle cx="12" cy="10" r="1" fill="currentColor" />
+      <circle cx="12" cy="15" r="1" fill="currentColor" />
+      <circle cx="12" cy="19" r="1" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** 代数/公理 */
+export function IconGat({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M4 4h16v16H4z" fill="none" />
+      <text x="12" y="15" textAnchor="middle" fontSize="10" fontWeight="bold" fill="currentColor">∀</text>
+    </svg>
+  )
+}
+
+/** 金融/美元 */
+export function IconFinancial({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  )
+}
+
+/** 代币/圆形 */
+export function IconToken({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="4" />
+      <line x1="12" y1="3" x2="12" y2="8" />
+      <line x1="12" y1="16" x2="12" y2="21" />
+      <line x1="3" y1="12" x2="8" y2="12" />
+      <line x1="16" y1="12" x2="21" y2="12" />
+    </svg>
+  )
+}
+

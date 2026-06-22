@@ -9,6 +9,7 @@ TOMAS 后端 API 服务器 — SQLAlchemy ORM 版
 import json
 import time
 from datetime import datetime
+from typing import Dict, Any
 import uuid
 import logging
 
@@ -3825,9 +3826,1127 @@ def defense_redteam():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ============ v3.9 API Endpoints ============
+# GaussEx Copartiality + Cognitive Compression + KernelCAT + Constitutional AGI
+# v3.9 新模块: gaussex_copartiality, cognitive_compression, kernelcat_scheduler, constitutional_agi
+
+_v39_modules = {}
+
+def _v39_get_gaussex():
+    """Lazy-init GaussEx 隐私保护模块"""
+    if "gaussex" not in _v39_modules:
+        try:
+            from gaussex_copartiality import GaussExCopartiality, GaussExInterconnect
+            _v39_modules["gaussex"] = {
+                "copartiality": GaussExCopartiality(),
+                "interconnect": GaussExInterconnect(),
+            }
+        except Exception as e:
+            logger.warning(f"v3.9 GaussEx init failed: {e}")
+            _v39_modules["gaussex"] = None
+    return _v39_modules["gaussex"]
+
+def _v39_get_kernelcat():
+    """Lazy-init KernelCAT 算子调度器"""
+    if "kernelcat" not in _v39_modules:
+        try:
+            from kernelcat_scheduler import KernelCATScheduler
+            _v39_modules["kernelcat"] = KernelCATScheduler()
+        except Exception as e:
+            logger.warning(f"v3.9 KernelCAT init failed: {e}")
+            _v39_modules["kernelcat"] = None
+    return _v39_modules["kernelcat"]
+
+def _v39_get_constitutional():
+    """Lazy-init Constitutional AGI 管道"""
+    if "constitutional" not in _v39_modules:
+        try:
+            from constitutional_agi import ConstitutionalAGI
+            _v39_modules["constitutional"] = ConstitutionalAGI()
+        except Exception as e:
+            logger.warning(f"v3.9 ConstitutionalAGI init failed: {e}")
+            _v39_modules["constitutional"] = None
+    return _v39_modules["constitutional"]
+
+
+# ── GaussEx Copartiality ───────────────────────────────────
+
+@app.route('/api/v3/gaussex/copartiality', methods=['POST'])
+def api_v3_gaussex_copartiality():
+    """
+    GaussEx 隐私保护 copartial 风险评估
+    Request: {"fibre_type": "BUSINESS_RULE", "noise_type": "MARKET",
+              "state": {"income": 30, "debt": 50}, "rule": "income > debt",
+              "noise_mean": 0.0, "noise_std": 0.1}
+    Response: {"passed": bool, "i_value": float, "raw_data_exposed": false, ...}
+    """
+    try:
+        from gaussex_copartiality import GaussExCopartiality, FibreType, NoiseType
+    except ImportError:
+        return jsonify({"error": "v3.9 module not available", "detail": "gaussex_copartiality"}), 503
+
+    try:
+        data = request.get_json(silent=True) or {}
+        gaussex = _v39_get_gaussex()
+        if gaussex is None:
+            return jsonify({"success": False, "error": "GaussEx module unavailable"}), 503
+
+        fibre_type_str = data.get("fibre_type", "BUSINESS_RULE")
+        noise_type_str = data.get("noise_type", "MARKET")
+        fibre_map = {"BUSINESS_RULE": FibreType.BUSINESS_RULE, "MEDICAL": FibreType.MEDICAL,
+                     "FINANCIAL": FibreType.FINANCIAL, "GENERAL": FibreType.GENERAL}
+        noise_map = {"MARKET": NoiseType.MARKET, "SENSOR": NoiseType.SENSOR,
+                     "GAUSSIAN": NoiseType.GAUSSIAN, "UNIFORM": NoiseType.UNIFORM}
+
+        fibre_type = fibre_map.get(fibre_type_str, FibreType.BUSINESS_RULE)
+        noise_type = noise_map.get(noise_type_str, NoiseType.MARKET)
+
+        state = data.get("state", {})
+        rule = data.get("rule", "true")
+        noise_mean = float(data.get("noise_mean", 0.0))
+        noise_std = float(data.get("noise_std", 0.1))
+
+        result = gaussex["copartiality"].assess(
+            fibre_type=fibre_type,
+            noise_type=noise_type,
+            state=state,
+            rule=rule,
+            noise_mean=noise_mean,
+            noise_std=noise_std,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "passed": getattr(result, "passed", False),
+                "i_value": getattr(result, "i_value", 0.0),
+                "raw_data_exposed": getattr(result, "raw_data_exposed", False),
+                "noise_applied": getattr(result, "noise_applied", 0.0),
+                "fibre_type": fibre_type_str,
+                "noise_type": noise_type_str,
+            }
+        })
+    except Exception as e:
+        logger.error(f"v3 gaussex/copartiality error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── GaussEx Interconnect ───────────────────────────────────
+
+@app.route('/api/v3/gaussex/interconnect', methods=['POST'])
+def api_v3_gaussex_interconnect():
+    """
+    GaussEx categorical interconnection: compose two Fibre+Noise systems
+    Request: {"system_a": {"fibre_type": "BUSINESS_RULE", "noise_type": "MARKET", ...},
+              "system_b": {"fibre_type": "MEDICAL", "noise_type": "GAUSSIAN", ...}}
+    Response: {"composed": bool, "joint_i_value": float, ...}
+    """
+    try:
+        from gaussex_copartiality import GaussExCopartiality, GaussExInterconnect, FibreType, NoiseType
+    except ImportError:
+        return jsonify({"error": "v3.9 module not available", "detail": "gaussex_copartiality"}), 503
+
+    try:
+        data = request.get_json(silent=True) or {}
+        gaussex = _v39_get_gaussex()
+        if gaussex is None:
+            return jsonify({"success": False, "error": "GaussEx module unavailable"}), 503
+
+        fibre_map = {"BUSINESS_RULE": FibreType.BUSINESS_RULE, "MEDICAL": FibreType.MEDICAL,
+                     "FINANCIAL": FibreType.FINANCIAL, "GENERAL": FibreType.GENERAL}
+        noise_map = {"MARKET": NoiseType.MARKET, "SENSOR": NoiseType.SENSOR,
+                     "GAUSSIAN": NoiseType.GAUSSIAN, "UNIFORM": NoiseType.UNIFORM}
+
+        sys_a = data.get("system_a", {})
+        sys_b = data.get("system_b", {})
+
+        fibre_a = fibre_map.get(sys_a.get("fibre_type", "BUSINESS_RULE"), FibreType.BUSINESS_RULE)
+        noise_a = noise_map.get(sys_a.get("noise_type", "MARKET"), NoiseType.MARKET)
+        fibre_b = fibre_map.get(sys_b.get("fibre_type", "BUSINESS_RULE"), FibreType.BUSINESS_RULE)
+        noise_b = noise_map.get(sys_b.get("noise_type", "MARKET"), NoiseType.MARKET)
+
+        result = gaussex["interconnect"].compose(
+            fibre_a=fibre_a, noise_a=noise_a,
+            fibre_b=fibre_b, noise_b=noise_b,
+            params_a=sys_a,
+            params_b=sys_b,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "composed": getattr(result, "composed", False),
+                "joint_i_value": getattr(result, "joint_i_value", 0.0),
+                "composite_fibre": getattr(result, "composite_fibre", str(fibre_a)),
+                "composition_valid": getattr(result, "composition_valid", True),
+            }
+        })
+    except Exception as e:
+        logger.error(f"v3 gaussex/interconnect error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Cognitive Compression: World Model Graph ───────────────
+
+@app.route('/api/v3/world-model/graph', methods=['GET'])
+def api_v3_world_model_graph():
+    """
+    Cognitive Compression PDE→WM hyperedge graph data for frontend visualization.
+    Returns PDE conservation law hyperedges with Gan polarization data.
+    """
+    try:
+        import math
+
+        # 模拟 PDE 守恒律超图节点与边数据
+        nodes = [
+            {"id": "mass", "label": "质量守恒 (Mass Conservation)", "type": "conservation_law",
+             "pde": "∂ρ/∂t + ∇·(ρv) = 0", "i_value": 0.99, "group": "continuity"},
+            {"id": "momentum_x", "label": "动量守恒 x (Momentum x)", "type": "conservation_law",
+             "pde": "∂(ρu)/∂t + ∇·(ρuv) = -∂p/∂x", "i_value": 0.98, "group": "momentum"},
+            {"id": "momentum_y", "label": "动量守恒 y (Momentum y)", "type": "conservation_law",
+             "pde": "∂(ρv)/∂t + ∇·(ρvv) = -∂p/∂y", "i_value": 0.98, "group": "momentum"},
+            {"id": "momentum_z", "label": "动量守恒 z (Momentum z)", "type": "conservation_law",
+             "pde": "∂(ρw)/∂t + ∇·(ρwv) = -∂p/∂z", "i_value": 0.98, "group": "momentum"},
+            {"id": "energy", "label": "能量守恒 (Energy Conservation)", "type": "conservation_law",
+             "pde": "∂(ρE)/∂t + ∇·(ρEv + pv) = ∇·(k∇T)", "i_value": 0.97, "group": "thermo"},
+            {"id": "entropy", "label": "熵增原理 (Entropy)", "type": "conservation_law",
+             "pde": "dS/dt ≥ 0", "i_value": 0.96, "group": "thermo"},
+            {"id": "vorticity", "label": "涡量守恒 (Vorticity)", "type": "conservation_law",
+             "pde": "Dω/Dt = (ω·∇)v + ν∇²ω", "i_value": 0.95, "group": "vortex"},
+            {"id": "helicity", "label": "螺旋度守恒 (Helicity)", "type": "conservation_law",
+             "pde": "dH/dt = 0 (inviscid)", "i_value": 0.94, "group": "vortex"},
+            {"id": "circulation", "label": "环量定理 (Circulation)", "type": "conservation_law",
+             "pde": "DΓ/Dt = ∮(ν∇²v)·dl", "i_value": 0.93, "group": "vortex"},
+            {"id": "potential", "label": "势流理论 (Potential Flow)", "type": "constitutive",
+             "pde": "∇²φ = 0", "i_value": 0.92, "group": "potential"},
+            {"id": "stress_tensor", "label": "应力张量 (Stress Tensor)", "type": "constitutive",
+             "pde": "σ = -pI + μ(∇v + ∇v^T)", "i_value": 0.91, "group": "constitutive"},
+            {"id": "gan_polarization", "label": "Gan 极化场 (Gan Polarization)", "type": "gan_field",
+             "pde": "∂G/∂t = G × B + η∇²G", "i_value": 0.87, "group": "gan"},
+        ]
+
+        edges = [
+            {"source": "mass", "target": "momentum_x", "relation": "feeds",
+             "cos_phi": round(math.cos(0.0), 4), "sin_phi": round(math.sin(0.0), 4),
+             "i_weight": 0.99, "polarization": "aligned"},
+            {"source": "mass", "target": "momentum_y", "relation": "feeds",
+             "cos_phi": round(math.cos(math.pi / 6), 4), "sin_phi": round(math.sin(math.pi / 6), 4),
+             "i_weight": 0.98, "polarization": "slight_tilt"},
+            {"source": "mass", "target": "momentum_z", "relation": "feeds",
+             "cos_phi": round(math.cos(math.pi / 4), 4), "sin_phi": round(math.sin(math.pi / 4), 4),
+             "i_weight": 0.97, "polarization": "moderate_tilt"},
+            {"source": "momentum_x", "target": "energy", "relation": "drives",
+             "cos_phi": round(math.cos(0.1), 4), "sin_phi": round(math.sin(0.1), 4),
+             "i_weight": 0.96, "polarization": "aligned"},
+            {"source": "momentum_y", "target": "energy", "relation": "drives",
+             "cos_phi": round(math.cos(0.2), 4), "sin_phi": round(math.sin(0.2), 4),
+             "i_weight": 0.95, "polarization": "aligned"},
+            {"source": "momentum_z", "target": "energy", "relation": "drives",
+             "cos_phi": round(math.cos(0.15), 4), "sin_phi": round(math.sin(0.15), 4),
+             "i_weight": 0.95, "polarization": "aligned"},
+            {"source": "energy", "target": "entropy", "relation": "constrains",
+             "cos_phi": round(math.cos(math.pi / 3), 4), "sin_phi": round(math.sin(math.pi / 3), 4),
+             "i_weight": 0.94, "polarization": "increasing"},
+            {"source": "momentum_x", "target": "vorticity", "relation": "induces",
+             "cos_phi": round(math.cos(math.pi / 2), 4), "sin_phi": round(math.sin(math.pi / 2), 4),
+             "i_weight": 0.93, "polarization": "orthogonal"},
+            {"source": "momentum_y", "target": "vorticity", "relation": "induces",
+             "cos_phi": round(math.cos(math.pi / 2), 4), "sin_phi": round(math.sin(math.pi / 2), 4),
+             "i_weight": 0.93, "polarization": "orthogonal"},
+            {"source": "momentum_z", "target": "vorticity", "relation": "induces",
+             "cos_phi": round(math.cos(math.pi / 2), 4), "sin_phi": round(math.sin(math.pi / 2), 4),
+             "i_weight": 0.93, "polarization": "orthogonal"},
+            {"source": "vorticity", "target": "helicity", "relation": "projects",
+             "cos_phi": round(math.cos(0.3), 4), "sin_phi": round(math.sin(0.3), 4),
+             "i_weight": 0.92, "polarization": "aligned"},
+            {"source": "vorticity", "target": "circulation", "relation": "integrates",
+             "cos_phi": round(math.cos(0.05), 4), "sin_phi": round(math.sin(0.05), 4),
+             "i_weight": 0.91, "polarization": "aligned"},
+            {"source": "stress_tensor", "target": "momentum_x", "relation": "governs",
+             "cos_phi": round(math.cos(0.0), 4), "sin_phi": round(math.sin(0.0), 4),
+             "i_weight": 0.90, "polarization": "aligned"},
+            {"source": "stress_tensor", "target": "momentum_y", "relation": "governs",
+             "cos_phi": round(math.cos(0.0), 4), "sin_phi": round(math.sin(0.0), 4),
+             "i_weight": 0.90, "polarization": "aligned"},
+            {"source": "stress_tensor", "target": "momentum_z", "relation": "governs",
+             "cos_phi": round(math.cos(0.0), 4), "sin_phi": round(math.sin(0.0), 4),
+             "i_weight": 0.90, "polarization": "aligned"},
+            {"source": "potential", "target": "circulation", "relation": "constrains",
+             "cos_phi": round(math.cos(math.pi / 6), 4), "sin_phi": round(math.sin(math.pi / 6), 4),
+             "i_weight": 0.89, "polarization": "slight_tilt"},
+            {"source": "gan_polarization", "target": "energy", "relation": "modulates",
+             "cos_phi": round(math.cos(math.pi / 4), 4), "sin_phi": round(math.sin(math.pi / 4), 4),
+             "i_weight": 0.85, "polarization": "gan_active"},
+            {"source": "gan_polarization", "target": "entropy", "relation": "perturbs",
+             "cos_phi": round(math.cos(0.8), 4), "sin_phi": round(math.sin(0.8), 4),
+             "i_weight": 0.83, "polarization": "gan_active"},
+        ]
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "nodes": nodes,
+                "edges": edges,
+                "total_nodes": len(nodes),
+                "total_edges": len(edges),
+                "conservation_laws": sum(1 for n in nodes if n["type"] == "conservation_law"),
+                "gan_polarized": sum(1 for e in edges if e["polarization"] == "gan_active"),
+                "source": "Cognitive Compression PDE→WM mock data (v3.9)",
+            }
+        })
+    except Exception as e:
+        logger.error(f"v3 world-model/graph error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── KernelCAT Operator Scheduling ──────────────────────────
+
+@app.route('/api/v3/kernelcat/schedule', methods=['POST'])
+def api_v3_kernelcat_schedule():
+    """
+    KernelCAT operator scheduling via KernelCATScheduler.
+    Request: {"operators": [{"id": "op1", "type": "conv3x3", "dependencies": [], "cost": 5.0}, ...],
+              "available_cores": 8, "strategy": "greedy"}
+    Response: {"allocations": [...], "total_cost": float, "makespan": float}
+    """
+    try:
+        from kernelcat_scheduler import KernelCATScheduler
+    except ImportError:
+        return jsonify({"error": "v3.9 module not available", "detail": "kernelcat_scheduler"}), 503
+
+    try:
+        data = request.get_json(silent=True) or {}
+        scheduler = _v39_get_kernelcat()
+        if scheduler is None:
+            return jsonify({"success": False, "error": "KernelCAT module unavailable"}), 503
+
+        operators = data.get("operators", [])
+        available_cores = int(data.get("available_cores", 8))
+        strategy = data.get("strategy", "greedy")
+
+        if not operators:
+            # 返回默认调度示例
+            return jsonify({
+                "success": True,
+                "data": {
+                    "allocations": [],
+                    "total_cost": 0.0,
+                    "makespan": 0.0,
+                    "cores_used": 0,
+                    "message": "No operators provided. Send operators list to schedule.",
+                }
+            })
+
+        result = scheduler.schedule(
+            operators=operators,
+            available_cores=available_cores,
+            strategy=strategy,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "allocations": getattr(result, "allocations", []),
+                "total_cost": getattr(result, "total_cost", 0.0),
+                "makespan": getattr(result, "makespan", 0.0),
+                "cores_used": getattr(result, "cores_used", available_cores),
+                "strategy": strategy,
+            }
+        })
+    except Exception as e:
+        logger.error(f"v3 kernelcat/schedule error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Constitutional AGI Generation ──────────────────────────
+
+@app.route('/api/v3/constitutional/generate', methods=['POST'])
+def api_v3_constitutional_generate():
+    """
+    Constitutional AI generation with Hard Veto.
+    Request: {"prompt": "text", "constitution": ["rule1", "rule2"], "temperature": 0.7}
+    Response: {"output": str, "vetoed": bool, "veto_reason": str, "token_count": int}
+    """
+    try:
+        from constitutional_agi import ConstitutionalAGI
+    except ImportError:
+        return jsonify({"error": "v3.9 module not available", "detail": "constitutional_agi"}), 503
+
+    try:
+        data = request.get_json(silent=True) or {}
+        const_agi = _v39_get_constitutional()
+        if const_agi is None:
+            return jsonify({"success": False, "error": "ConstitutionalAGI module unavailable"}), 503
+
+        prompt = data.get("prompt", "")
+        constitution = data.get("constitution", [])
+        temperature = float(data.get("temperature", 0.7))
+
+        if not prompt:
+            return jsonify({"success": False, "error": "prompt is required"}), 400
+
+        result = const_agi.generate(
+            prompt=prompt,
+            constitution=constitution,
+            temperature=temperature,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "output": getattr(result, "output", ""),
+                "vetoed": getattr(result, "vetoed", False),
+                "veto_reason": getattr(result, "veto_reason", None),
+                "token_count": getattr(result, "token_count", 0),
+                "temperature": temperature,
+                "constitution_applied": bool(constitution),
+            }
+        })
+    except Exception as e:
+        logger.error(f"v3 constitutional/generate error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============ v3.10 API Endpoints (Alignment Triad + Goal Contract) ============
+
+@app.route('/api/v3/alignment/scan', methods=['POST'])
+def v310_alignment_scan():
+    """扫描输出文本的对齐风险：Lock-in 否决扫描 + Rearing 反伪装 + Governance SLA 审计"""
+    try:
+        from sim.alignment_triad import AlignmentTriad
+    except ImportError:
+        return jsonify({"error": "v3.10 alignment_triad module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "")
+        agent_id = data.get("agent_id", "default")
+        triad = AlignmentTriad()
+        result = triad.process_output(agent_id, text)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/alignment/triad-status', methods=['POST'])
+def v310_alignment_triad_status():
+    """获取对齐三范式完整状态报告"""
+    try:
+        from sim.alignment_triad import AlignmentTriad
+    except ImportError:
+        return jsonify({"error": "v3.10 alignment_triad module not available"}), 503
+    try:
+        triad = AlignmentTriad()
+        status = triad.get_alignment_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/goal/contract-draft', methods=['POST'])
+def v310_goal_contract_draft():
+    """起草 GoalPro Goal Contract → ψ-Anchor DSL"""
+    try:
+        from sim.goal_directed_agent import GoalContract
+    except ImportError:
+        return jsonify({"error": "v3.10 goal_directed_agent module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        gc = GoalContract(data.get("request_id", "auto"))
+        gc.draft(
+            intent=data.get("intent", ""),
+            scope_in=data.get("scope_in", []),
+            scope_out=data.get("scope_out", []),
+            evidence=data.get("evidence_required", []),
+            pauses=data.get("pause_conditions", []),
+            acceptance=data.get("acceptance", "")
+        )
+        result = gc.propose()
+        result["psi_anchor_dsl"] = gc.to_psi_anchor_dsl()
+        result["jsonld"] = gc.to_jsonld()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/goal/soul-status', methods=['GET'])
+def v310_goal_soul_status():
+    """Soul-Graph 增长指标 + MUS 漂移检测"""
+    try:
+        from sim.goal_directed_agent import TOMASGoalDirectedAgent
+    except ImportError:
+        return jsonify({"error": "v3.10 goal_directed_agent module not available"}), 503
+    try:
+        user_id = request.args.get("user_id", "default")
+        agent = TOMASGoalDirectedAgent(user_id)
+        status = agent.get_full_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/goal/cron-register', methods=['POST'])
+def v310_goal_cron_register():
+    """注册 κ-Snap CronFire 周期任务"""
+    try:
+        from sim.goal_directed_agent import TOMASGoalDirectedAgent
+    except ImportError:
+        return jsonify({"error": "v3.10 goal_directed_agent module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        agent = TOMASGoalDirectedAgent(data.get("user_id", "default"))
+        result = agent.cron_fire.register(
+            schedule_id=data.get("schedule_id", "auto"),
+            cron_expr=data.get("cron_expr", "0 10 * * *"),
+            task_payload=data.get("task_payload", {})
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ════════════════════════════════════════════════════════
+# v3.11: Cognitive Health API
+# ════════════════════════════════════════════════════════
+
+@app.route('/api/v3/cognitive-health/check', methods=['POST'])
+def v311_cognitive_health_check():
+    """运行认知健康检查管道"""
+    try:
+        from sim.cognitive_health import TOMASCognitivelyHealthyAGI
+    except ImportError:
+        return jsonify({"error": "v3.11 cognitive_health module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        window = data.get("snap_window_size", 50)
+        ch = TOMASCognitivelyHealthyAGI(snap_window_size=window)
+        report = ch.health_check_pipeline()
+        return jsonify({
+            "state": ch.get_state(),
+            "habit_loop_detected": report.habit_loop_detected,
+            "habit_loop_count": report.habit_loop_count,
+            "bias_penalty_score": round(report.bias_penalty_score, 4),
+            "mus_reflection_triggered": report.mus_reflection_triggered,
+            "agent_paused": report.agent_paused,
+            "recommendation": report.recommendation,
+            "timestamp": report.timestamp,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/cognitive-health/stats', methods=['GET'])
+def v311_cognitive_health_stats():
+    """获取认知健康统计"""
+    try:
+        from sim.cognitive_health import TOMASCognitivelyHealthyAGI
+    except ImportError:
+        return jsonify({"error": "v3.11 cognitive_health module not available"}), 503
+    try:
+        ch = TOMASCognitivelyHealthyAGI()
+        report = ch.health_check_pipeline()
+        # 运行可证伪预测
+        from sim.cognitive_health import FalsifiablePredictions
+        fp = FalsifiablePredictions()
+        p_ad1 = fp.P_AD1_habit_decay(N=10, D0=1.0, alpha=0.1)
+        return jsonify({
+            "state": ch.get_state(),
+            "bias_penalty_score": round(report.bias_penalty_score, 4),
+            "predictions": {
+                "P_AD1_habit_decay": p_ad1,
+                "P_AD2_bias_lock": fp.P_AD2_bias_lock_positive_feedback(G_depth=0.8, B_score=0.7, theta_c=0.5),
+            },
+            "snap_history_len": len(report.snap_history),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/cognitive-health/pause', methods=['POST'])
+def v311_cognitive_health_pause():
+    """强制暂停 Agent（模拟回路检测触发）"""
+    try:
+        from sim.cognitive_health import TOMASCognitivelyHealthyAGI
+    except ImportError:
+        return jsonify({"error": "v3.11 cognitive_health module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        ch = TOMASCognitivelyHealthyAGI()
+        # 模拟连续相同 snap 触发暂停
+        for i in range(4):
+            ch.track_kappa_snap_pattern(f"forced_snap_{i}", {"type": "forced_repeat", "hash": "abc123"})
+        pause_result = ch.issue_pause_order()
+        return jsonify(pause_result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/cognitive-health/restart', methods=['POST'])
+def v311_cognitive_health_restart():
+    """手动重启（需要 override_code）"""
+    try:
+        from sim.cognitive_health import TOMASCognitivelyHealthyAGI
+    except ImportError:
+        return jsonify({"error": "v3.11 cognitive_health module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        override_code = data.get("override_code", "")
+        ch = TOMASCognitivelyHealthyAGI()
+        # 先暂停再重启
+        for i in range(4):
+            ch.track_kappa_snap_pattern(f"snap_{i}", {"type": "test_repeat", "hash": "abc"})
+        ch.issue_pause_order()
+        restart_result = ch.restart(override_code or "manual_restart_001")
+        return jsonify(restart_result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ════════════════════════════════════════════════════════
+# v3.11: Grill-me API
+# ════════════════════════════════════════════════════════
+
+@app.route('/api/v3/grill/gap-analysis', methods=['POST'])
+def v311_grill_gap_analysis():
+    """对需求文本进行 DIKWP 五层缺口分析"""
+    try:
+        from sim.grill_me_engine import DIKWPGapAnalyzer
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        requirement = data.get("requirement", "")
+        if not requirement:
+            return jsonify({"error": "requirement field is required"}), 400
+        analyzer = DIKWPGapAnalyzer()
+        gap_report = analyzer.analyze(requirement)
+        dsl = analyzer.generate_gap_dsl(gap_report)
+        return jsonify({
+            "requirement_id": gap_report.requirement_id,
+            "all_gaps_closed": gap_report.all_gaps_closed,
+            "layers": {
+                layer: {
+                    "status": gap.status,
+                    "description": gap.gap_description,
+                    "closed": gap.closed,
+                    "evidence_required": gap.evidence_required,
+                }
+                for layer, gap in gap_report.layers.items()
+            },
+            "gap_dsl": dsl,
+            "silent_assumptions": gap_report.silent_assumptions,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/grill/gate-status', methods=['GET'])
+def v311_grill_gate_status():
+    """获取闸门状态（所有已注册需求）"""
+    try:
+        from sim.grill_me_engine import GrillExecutionGate
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        gate = GrillExecutionGate()
+        return jsonify({
+            "total_registered": len(gate._registry),
+            "gates": {
+                req_id: {
+                    "all_gaps_closed": gate.verify_all_gaps_closed(req_id),
+                    "lock_reason": gate.lock_reason(req_id),
+                }
+                for req_id in gate._registry
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/grill/trace', methods=['GET'])
+def v311_grill_trace():
+    """获取需求溯源链"""
+    try:
+        from sim.grill_me_engine import RequirementTracer
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        req_id = request.args.get("req_id", "")
+        if not req_id:
+            return jsonify({"error": "req_id query parameter is required"}), 400
+        tracer = RequirementTracer()
+        chain = tracer.get_trace_chain(req_id)
+        return jsonify({
+            "req_id": req_id,
+            "chain_length": len(chain),
+            "chain": chain,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/grill/trace/verify', methods=['POST'])
+def v311_grill_trace_verify():
+    """验证溯源链防篡改"""
+    try:
+        from sim.grill_me_engine import RequirementTracer
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        req_id = data.get("req_id", "")
+        if not req_id:
+            return jsonify({"error": "req_id field is required"}), 400
+        tracer = RequirementTracer()
+        # 添加一条测试记录
+        snap_event = {
+            "snap_id": f"ksnap_verify_{req_id}",
+            "description": "test verification entry",
+            "timestamp": time.time(),
+        }
+        tracer.add_snap_to_trace(req_id, snap_event)
+        verification = tracer.verify_tamper_proof(req_id)
+        return jsonify(verification)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/grill/gap/close', methods=['POST'])
+def v311_grill_gap_close():
+    """用证据关闭指定缺口"""
+    try:
+        from sim.grill_me_engine import GrillExecutionGate, DIKWPGapAnalyzer
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        requirement = data.get("requirement", "")
+        layer = data.get("layer", "")
+        evidence = data.get("evidence", "")
+        closed_by = data.get("closed_by", "api_user")
+        if not requirement or not layer or not evidence:
+            return jsonify({"error": "requirement, layer, and evidence are required"}), 400
+        if layer not in ("D", "I", "K", "W", "P"):
+            return jsonify({"error": "layer must be one of D, I, K, W, P"}), 400
+
+        analyzer = DIKWPGapAnalyzer()
+        gap_report = analyzer.analyze(requirement)
+
+        gate = GrillExecutionGate()
+        gate.register_gap_analysis(gap_report)
+        result = gate.close_gap(gap_report.requirement_id, layer, evidence, closed_by)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/grill/release', methods=['POST'])
+def v311_grill_release():
+    """释放需求（所有缺口关闭后）"""
+    try:
+        from sim.grill_me_engine import GrillExecutionGate, DIKWPGapAnalyzer
+    except ImportError:
+        return jsonify({"error": "v3.11 grill_me_engine module not available"}), 503
+    try:
+        data = request.get_json(silent=True) or {}
+        requirement = data.get("requirement", "")
+        if not requirement:
+            return jsonify({"error": "requirement field is required"}), 400
+
+        analyzer = DIKWPGapAnalyzer()
+        gap_report = analyzer.analyze(requirement)
+
+        gate = GrillExecutionGate()
+        gate.register_gap_analysis(gap_report)
+        release_result = gate.release(gap_report.requirement_id)
+        return jsonify(release_result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ============================================================
 # 启动入口
 # ============================================================
+
+# ══════════════════════════════════════════════════════════════╗
+# v3.12: 鲁兆 DNA / GAT 公理 / 金融市场 / 代币经济 API
+# ╚═════════════════════════════════════════════════════════════╝
+
+# ── 内存会话存储 ─────────────────────────────────────
+_financial_sessions: Dict[str, Dict[str, Any]] = {}
+_economy_sessions: Dict[str, Any] = {}
+
+
+@app.route('/api/v3/luzhao/fibonacci', methods=['GET'])
+def v312_luzhao_fibonacci():
+    try:
+        n = int(request.args.get("n", 20))
+        n = max(1, min(n, 100))
+        from sim.luzhao_dna import fibonacci_numbers
+        return jsonify({"n": n, "values": fibonacci_numbers(n)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/lucas', methods=['GET'])
+def v312_luzhao_lucas():
+    try:
+        n = int(request.args.get("n", 20))
+        n = max(1, min(n, 100))
+        from sim.luzhao_dna import lucas_numbers
+        return jsonify({"n": n, "values": lucas_numbers(n)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/bagua', methods=['GET'])
+def v312_luzhao_bagua():
+    try:
+        from sim.luzhao_dna import bagua_constants
+        return jsonify({"constants": bagua_constants()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/invariants', methods=['GET'])
+def v312_luzhao_invariants():
+    try:
+        from sim.luzhao_dna import get_chinese_market_invariants
+        return jsonify({"invariants": get_chinese_market_invariants()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/dna/create', methods=['POST'])
+def v312_luzhao_dna_create():
+    try:
+        from sim.luzhao_dna import LuZhaoDNA
+        data = request.get_json(silent=True) or {}
+        dna = LuZhaoDNA(
+            first_wave_duration=int(data.get("duration", 12)),
+            first_wave_amplitude=float(data.get("amplitude", 0.15)),
+            tolerance=float(data.get("tolerance", 0.15)),
+        )
+        return jsonify({"success": True, "dna": dna.to_dict()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/dna/check', methods=['POST'])
+def v312_luzhao_dna_check():
+    try:
+        from sim.luzhao_dna import LuZhaoDNA
+        data = request.get_json(silent=True) or {}
+        dna = LuZhaoDNA(
+            first_wave_duration=int(data.get("duration", 12)),
+            first_wave_amplitude=float(data.get("amplitude", 0.15)),
+        )
+        frames = data.get("frames", [])
+        result = dna.dna_replication_check([int(f) for f in frames])
+        return jsonify({"success": True, "replication": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/luzhao/dna/bagua-trigger', methods=['POST'])
+def v312_luzhao_bagua_trigger():
+    try:
+        from sim.luzhao_dna import LuZhaoDNA
+        data = request.get_json(silent=True) or {}
+        prices = data.get("prices", [])
+        if not prices:
+            return jsonify({"error": "prices array required"}), 400
+        dna = LuZhaoDNA(12, 0.1)
+        triggers = dna.bagua_trigger([float(p) for p in prices])
+        return jsonify({"success": True, "triggers": triggers})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/gat/theories', methods=['GET'])
+def v312_gat_theories():
+    try:
+        from sim.gat_axioms import ArcDSL_GAT, OctonionGAT
+        arc = ArcDSL_GAT()
+        oct_gat = OctonionGAT()
+        return jsonify({"theories": [
+            {"name": arc.name, "sorts": len(arc.sorts),
+             "operations": len(arc.operations), "axioms": len(arc.axioms)},
+            {"name": oct_gat.name, "sorts": len(oct_gat.sorts),
+             "operations": len(oct_gat.operations), "axioms": len(oct_gat.axioms)},
+        ]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/gat/theory/create', methods=['POST'])
+def v312_gat_theory_create():
+    try:
+        from sim.gat_axioms import GATTheory
+        data = request.get_json(silent=True) or {}
+        t = GATTheory(name=data.get("name", "CustomTheory"))
+        for s in data.get("sorts", []):
+            t.add_sort(s.get("name", ""), s.get("desc", ""))
+        for op in data.get("operations", []):
+            t.add_operation(op.get("name", ""), op.get("domain", []), op.get("codomain", ""))
+        for ax in data.get("axioms", []):
+            t.add_axiom(ax.get("name", ""), ax.get("equation", ""))
+        return jsonify({"success": True, "theory": {
+            "name": t.name, "sorts": list(t.sorts.keys()),
+            "operations": [o["name"] for o in t.operations],
+            "axioms": [a["name"] for a in t.axioms],
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/gat/theory/free-model', methods=['POST'])
+def v312_gat_theory_free_model():
+    try:
+        from sim.gat_axioms import ArcDSL_GAT, OctonionGAT
+        data = request.get_json(silent=True) or {}
+        name = data.get("theory_name", "ArcDSL_GAT")
+        if name == "ArcDSL_GAT":
+            t = ArcDSL_GAT()
+        elif name == "OctonionGAT":
+            t = OctonionGAT()
+        else:
+            return jsonify({"error": f"unknown theory: {name}"}), 400
+        model = t.free_model()
+        return jsonify({"success": True, "free_model": model})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/gat/theory/map', methods=['POST'])
+def v312_gat_theory_map():
+    try:
+        from sim.gat_axioms import ArcDSL_GAT, OctonionGAT
+        data = request.get_json(silent=True) or {}
+        src = ArcDSL_GAT() if data.get("source", "ArcDSL_GAT") == "ArcDSL_GAT" else OctonionGAT()
+        tgt = OctonionGAT() if data.get("target", "OctonionGAT") == "OctonionGAT" else ArcDSL_GAT()
+        result = src.theory_map(tgt, data.get("mapping", {}))
+        return jsonify({"success": True, "map": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/financial/lob/create', methods=['POST'])
+def v312_financial_lob_create():
+    try:
+        from sim.financial_world_model import build_financial_world
+        import uuid
+        session_id = str(uuid.uuid4())[:8]
+        world = build_financial_world()
+        _financial_sessions[session_id] = world
+        return jsonify({"success": True, "session_id": session_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/lob/add-order', methods=['POST'])
+def v312_financial_lob_add_order():
+    try:
+        from sim.financial_world_model import OrderSide
+        data = request.get_json(silent=True) or {}
+        sid = data.get("session_id", "")
+        if sid not in _financial_sessions:
+            return jsonify({"error": "unknown session_id"}), 404
+        lob = _financial_sessions[sid]["lob"]
+        side = OrderSide.BID if data.get("side", "bid") == "bid" else OrderSide.ASK
+        price = float(data.get("price", 0))
+        size = float(data.get("size", 0))
+        order = lob.add_order(side, price, size)
+        return jsonify({"success": True, "order_id": order.order_id,
+                         "best_bid": lob.get_best_bid(), "best_ask": lob.get_best_ask(),
+                         "mid_price": lob.mid_price, "spread": lob.spread})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/lob/match', methods=['POST'])
+def v312_financial_lob_match():
+    try:
+        from sim.financial_world_model import OrderSide
+        data = request.get_json(silent=True) or {}
+        sid = data.get("session_id", "")
+        if sid not in _financial_sessions:
+            return jsonify({"error": "unknown session_id"}), 404
+        lob = _financial_sessions[sid]["lob"]
+        side = OrderSide.BID if data.get("side", "bid") == "bid" else OrderSide.ASK
+        size = float(data.get("size", 1.0))
+        result = lob.match_market_order(side, size)
+        return jsonify({"success": True,
+                         "executed_size": result.executed_size,
+                         "avg_price": result.avg_exec_price,
+                         "slippage": result.slippage})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/lob/<session_id>', methods=['GET'])
+def v312_financial_lob_status(session_id):
+    try:
+        if session_id not in _financial_sessions:
+            return jsonify({"error": "unknown session_id"}), 404
+        lob = _financial_sessions[session_id]["lob"]
+        return jsonify({
+            "session_id": session_id,
+            "best_bid": lob.get_best_bid(),
+            "best_ask": lob.get_best_ask(),
+            "mid_price": lob.mid_price,
+            "spread": lob.spread,
+            "spread_bps": lob.spread_bps,
+            "depth_entropy": lob.depth_entropy(),
+            "bid_orders": len(lob.bid_orders),
+            "ask_orders": len(lob.ask_orders),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/mm/provide', methods=['POST'])
+def v312_financial_mm_provide():
+    try:
+        data = request.get_json(silent=True) or {}
+        sid = data.get("session_id", "")
+        if sid not in _financial_sessions:
+            return jsonify({"error": "unknown session_id"}), 404
+        lob = _financial_sessions[sid]["lob"]
+        mm = _financial_sessions[sid]["market_maker"]
+        bid_o, ask_o = mm.provide_liquidity(lob)
+        return jsonify({"success": True,
+                         "bid_price": bid_o.price if bid_o else None,
+                         "ask_price": ask_o.price if ask_o else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/slippage/compute', methods=['POST'])
+def v312_financial_slippage():
+    try:
+        from sim.financial_world_model import SlippageModel
+        data = request.get_json(silent=True) or {}
+        sm = SlippageModel()
+        slippage = sm.compute_slippage(
+            float(data.get("intended_price", 0)),
+            float(data.get("executed_price", 0)))
+        return jsonify({"slippage": slippage})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/enpv', methods=['POST'])
+def v312_financial_enpv():
+    try:
+        from sim.financial_world_model import ENPVCalculator
+        data = request.get_json(silent=True) or {}
+        calc = ENPVCalculator()
+        decision = calc.compute_enpv_detailed(
+            prob_fill=float(data.get("prob_fill", 0.5)),
+            expected_profit=float(data.get("expected_profit", 0)),
+            slippage_cost=float(data.get("slippage_cost", 0)),
+            opportunity_cost=float(data.get("opportunity_cost", 0)),
+        )
+        return jsonify({
+            "enpv": decision.enpv,
+            "should_chase": decision.should_chase,
+            "explanation": decision.explanation,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/financial/circuit-break', methods=['POST'])
+def v312_financial_circuit_break():
+    try:
+        data = request.get_json(silent=True) or {}
+        sid = data.get("session_id", "")
+        if sid not in _financial_sessions:
+            return jsonify({"error": "unknown session_id"}), 404
+        cb = _financial_sessions[sid]["circuit_breaker"]
+        lob = _financial_sessions[sid]["lob"]
+        broken, state, reason = cb.check_circuit_break(lob)
+        return jsonify({
+            "broken": broken,
+            "state": state.value,
+            "reason": reason,
+            "phase": cb.get_phase().value,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v3/tokenized/economy/create', methods=['POST'])
+def v312_tokenized_economy_create():
+    try:
+        from sim.tokenized_economy import AgentEconomy
+        import uuid
+        data = request.get_json(silent=True) or {}
+        econ = AgentEconomy(
+            initial_supply=float(data.get("initial_supply", 1000000.0)),
+            tax_rate=float(data.get("tax_rate", 0.001)),
+        )
+        eid = data.get("economy_id") or str(uuid.uuid4())[:8]
+        _economy_sessions[eid] = econ
+        return jsonify({"success": True, "economy_id": eid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/tokenized/agent/register', methods=['POST'])
+def v312_tokenized_agent_register():
+    try:
+        from sim.tokenized_economy import AgentType
+        data = request.get_json(silent=True) or {}
+        eid = data.get("economy_id", "")
+        if eid not in _economy_sessions:
+            return jsonify({"error": "unknown economy_id"}), 404
+        econ = _economy_sessions[eid]
+        atype = AgentType.AGI
+        if data.get("agent_type") == "NARROW_AI":
+            atype = AgentType.NARROW_AI
+        agent = econ.register_agent(data.get("agent_id", ""), atype)
+        return jsonify({"success": True, "agent_id": agent.agent_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/tokenized/ubi/payout', methods=['POST'])
+def v312_tokenized_ubi_payout():
+    try:
+        data = request.get_json(silent=True) or {}
+        eid = data.get("economy_id", "")
+        if eid not in _economy_sessions:
+            return jsonify({"error": "unknown economy_id"}), 404
+        econ = _economy_sessions[eid]
+        amount = float(data.get("amount", 100.0))
+        success = econ.ubi_payout(data.get("agent_id", ""), amount)
+        return jsonify({"success": success})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/tokenized/trade', methods=['POST'])
+def v312_tokenized_trade():
+    try:
+        data = request.get_json(silent=True) or {}
+        eid = data.get("economy_id", "")
+        if eid not in _economy_sessions:
+            return jsonify({"error": "unknown economy_id"}), 404
+        econ = _economy_sessions[eid]
+        trade = econ.agent_trade(
+            data.get("seller_id", ""),
+            data.get("buyer_id", ""),
+            data.get("service", ""),
+            float(data.get("price", 0)),
+        )
+        return jsonify({
+            "success": trade.status.value == "executed",
+            "trade_id": trade.trade_id,
+            "status": trade.status.value,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/tokenized/economy/<economy_id>/snapshot', methods=['GET'])
+def v312_tokenized_economy_snapshot(economy_id):
+    try:
+        if economy_id not in _economy_sessions:
+            return jsonify({"error": "unknown economy_id"}), 404
+        econ = _economy_sessions[economy_id]
+        snap = econ.get_economy_snapshot()
+        return jsonify(snap)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/v3/tokenized/agent/<economy_id>/<agent_id>/balance', methods=['GET'])
+def v312_tokenized_agent_balance(economy_id, agent_id):
+    try:
+        if economy_id not in _economy_sessions:
+            return jsonify({"error": "unknown economy_id"}), 404
+        econ = _economy_sessions[economy_id]
+        balance = econ.get_agent_balance(agent_id)
+        return jsonify({"agent_id": agent_id, "balance": balance})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     import os

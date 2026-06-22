@@ -5,7 +5,9 @@ import type { AppMode, ChatSession } from '../types'
 import {
   IconChat, IconKey, IconPlus, IconSparkles, IconTrash, IconEdit,
   IconDashboard, IconGlobe, IconAuditLog, IconBrain, IconMemory,
-  IconShield, IconLayers, IconFlame, IconRoute, IconCpu, IconGraph
+  IconShield, IconLayers, IconFlame, IconRoute, IconCpu, IconGraph,
+  IconLock, IconDescription, IconTarget, IconAnchor,
+  IconHeartbeat, IconSearchGavel, IconDna, IconGat, IconFinancial, IconToken
 } from './icons'
 import { SkeletonText } from './Skeleton'
 
@@ -51,6 +53,14 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'itot', label: 'IT-OT 翻译', icon: <IconGlobe size={17} />, section: 'engine' },
   { id: 'hypergraph', label: '超图数据库', icon: <IconGraph size={17} />, section: 'engine' },
   { id: 'v2', label: 'V2 升级', icon: <IconSparkles size={17} />, section: 'engine' },
+  { id: 'alignment-triad', label: '对齐三范式', icon: <IconLock size={17} />, section: 'engine' },
+  { id: 'goal-agent', label: 'Goal 导向', icon: <IconTarget size={17} />, section: 'engine' },
+  { id: 'cognitive-health', label: '认知健康', icon: <IconHeartbeat size={17} />, section: 'engine' },
+  { id: 'grill-me', label: '需求审问', icon: <IconSearchGavel size={17} />, section: 'engine' },
+  { id: 'luzhao-dna', label: '鲁兆 DNA', icon: <IconDna size={17} />, section: 'engine' },
+  { id: 'gat-axioms', label: 'GAT 公理', icon: <IconGat size={17} />, section: 'engine' },
+  { id: 'financial-world', label: '金融市场', icon: <IconFinancial size={17} />, section: 'engine' },
+  { id: 'tokenized-economy', label: '代币经济', icon: <IconToken size={17} />, section: 'engine' },
   { id: 'docs', label: '技术文档', icon: <IconFile size={17} />, section: 'info' },
 ]
 
