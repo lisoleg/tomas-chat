@@ -5923,6 +5923,112 @@ def v312_tokenized_agent_balance(economy_id, agent_id):
         return jsonify({"error": str(e)}), 500
 
 
+
+
+# ============================================================
+# TOMAS Orchestrator (Fugu-inspired Conductor Mode)
+# ============================================================
+
+_orchestrator_instance = None
+
+def _get_orchestrator():
+    """Lazy-init TOMASOrchestrator (singleton)"""
+    global _orchestrator_instance
+    if _orchestrator_instance is not None:
+        return _orchestrator_instance
+    try:
+        from orchestrator import TOMASOrchestrator
+        from router import TOMASRouter
+        # Try to get the router from server context
+        router = None
+        try:
+            from router import _get_router
+            router = _get_router()
+        except Exception:
+            pass
+        _orchestrator_instance = TOMASOrchestrator(
+            router=router,
+            enable_decomposition=True,
+            enable_critic=True,
+        )
+        print("[Orchestrator] ✅ 初始化完成（Conductor 模式）")
+    except Exception as e:
+        print(f"[Orchestrator] ⚠️ 初始化失败: {e}")
+        return None
+    return _orchestrator_instance
+
+
+@app.route("/api/orchestrator/agents", methods=["GET"])
+def api_orchestrator_agents():
+    """列出所有可用智能体"""
+    try:
+        from orchestrator import TOMASOrchestrator
+        orch = TOMASOrchestrator()
+        return jsonify({"success": True, "data": {"agents": orch.list_agents()}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/orchestrator/orchestrate", methods=["POST"])
+def api_orchestrator_orchestrate():
+    """提交查询进行 Conductor 式多智能体编排响应
+
+    Request JSON:
+        {
+            "query": "...",
+            "context": {...},       # 可选：EML 上下文
+            "force_agents": [...]   # 可选：强制使用指定智能体
+        }
+    """
+    try:
+        orch = _get_orchestrator()
+        if orch is None:
+            return jsonify({"success": False, "error": "Orchestrator 未初始化"}), 500
+
+        data = request.json or {}
+        query = data.get("query", "")
+        if not query:
+            return jsonify({"success": False, "error": "query 不能为空"}), 400
+
+        result = orch.orchestrate(
+            query=query,
+            context=data.get("context"),
+            force_agents=data.get("force_agents"),
+        )
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "query": result.query,
+                "synthesis": result.synthesis,
+                "agent_outputs": result.agent_outputs,
+                "plan": {
+                    "complexity": result.plan.complexity.value,
+                    "num_subtasks": len(result.plan.subtasks),
+                    "coordination_strategy": result.plan.coordination_strategy,
+                },
+                "agents_used": result.agents_used,
+                "total_latency_ms": result.total_latency_ms,
+                "trace": result.trace,
+            }
+        })
+    except Exception as e:
+        logger.error(f"Orchestrator error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/orchestrator/stats", methods=["GET"])
+def api_orchestrator_stats():
+    """查看编排统计信息"""
+    try:
+        orch = _get_orchestrator()
+        if orch is None:
+            return jsonify({"success": False, "error": "Orchestrator 未初始化"}), 500
+        return jsonify({"success": True, "data": orch.get_stats()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     import os
     from models import get_engine

@@ -610,6 +610,11 @@ class InferenceEngine:
         self.k_snap_enabled = k_snap_enabled
         self._dead_zero_mus_gate = None
         self._init_dead_zero_mus_gate()
+        # TOMAS Orchestrator（Conductor 式多智能体编排）
+        self.orchestrator = None
+        self._use_orchestration = False
+        self._orchestration_complexity_threshold = 2  # 查询长度 > 此值（按换行/分号计）时触发编排
+
 
     def set_neural_model(self, model, use_neural: bool = True):
         """设置神经解码器模型（启用/禁用神经生成）"""
@@ -634,6 +639,22 @@ class InferenceEngine:
         """
         self.router = router
         self._use_router = True
+
+    def set_orchestrator(self, orchestrator):
+        """设置 TOMAS Orchestrator（Conductor 式多智能体编排器）
+
+        当 Orchestrator 激活时，复杂查询会自动分解为子任务，
+        动态调度多个专家智能体，而非只有 translator/writer 二路。
+
+        受 Sakana AI Fugu 启发（2026-06）：
+          - 自适应任务分解
+          - 动态智能体选择
+          - 自然语言协调指令
+          - 失败自愈（自动切换备选智能体）
+        """
+        self.orchestrator = orchestrator
+        self._use_orchestration = True
+        print("[InferenceEngine] ✅ Orchestrator 编排模式已启用")
 
     def _init_dead_zero_mus_gate(self):
         """初始化死零/MUS/κ-Snap 统一门控器
@@ -926,6 +947,34 @@ class InferenceEngine:
                 'mus_result': {'mus_active': False},
                 'matched_concepts': result['matched_concepts'],
             }
+
+        # Step 3.5: 编排模式检查（Fugu 启发）
+        if self._use_orchestration and self.orchestrator and not force_translator:
+            is_complex = (
+                is_conversational_query(text)  # 对话型 → 不编排（已是 creative 路径）
+                or "\\n" in text
+                or "？" in text and text.count("？") > 1
+                or "?" in text and text.count("?") > 1
+                or len(text) > 100
+            )
+            if is_complex and not is_chat:
+                try:
+                    orch_result = self.orchestrator.orchestrate(text, context={
+                        "eml_ctx": {"kappa": kappa} if "kappa" in dir() else None
+                    })
+                    return {
+                        "text": orch_result.synthesis or list(orch_result.agent_outputs.values())[0],
+                        "mode": "orchestrated",
+                        "confidence": confidence,
+                        "gate_result": None,
+                        "dead_zero_result": gate_result,
+                        "mus_result": {"mus_active": False, "orchestration": True},
+                        "matched_concepts": result["matched_concepts"],
+                        "orchestration_trace": orch_result.trace,
+                        "agents_used": orch_result.agents_used,
+                    }
+                except Exception as e:
+                    print(f"⚠️ Orchestration 失败（回退到标准路由）：{e}")
 
         # Step 3: 判断路由
         # 对话型查询 → 强制走作家路径，不管 EML 置信度多高
