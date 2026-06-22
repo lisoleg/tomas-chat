@@ -352,7 +352,44 @@ python download_gaia.py --method mock --num-mock 100
 
 ## 📝 更新日志
 
-### v3.4（最新 · 缓存优化 + 数据接入 + 代码质量）
+### v3.12（最新 · 鲁兆DNA + GAT公理 + 金融市场 + 代币经济）
+- ✅ **鲁兆DNA基因库** (`luzhao_dna.py`): 斐波那契/鲁加斯/八卦数拓扑不变量, DNA复制检测, 35自测
+- ✅ **GAT广义代数理论** (`gat_axioms.py`): GATTheory/ArcDSL_GAT/OctonionGAT, 公理验证, 自由模型, 30自测
+- ✅ **金融市场世界模型** (`financial_world_model.py`): LOB/做市商/滑点/ENPV/熔断, 17自测
+- ✅ **代币化经济** (`tokenized_economy.py`): Token/AgentEconomy/UBI/Gini系数, 66自测
+- ✅ **Flask API**: +25端点 (165总计)
+- ✅ **前端4面板**: LuZhaoPanel/GATPanel/FinancialWorldPanel/TokenizedEconomyPanel
+- ✅ **Dashboard增强**: +8子系统卡片, +8 panelMap映射
+- ✅ **全量测试**: 1368 passed, 2 skipped, 0 failed
+
+### v3.11（认知健康 + Grill-Me需求审问）
+- ✅ **认知健康监测** (`cognitive_health.py`, 1550行): 双引擎成瘾模型, HealthAgentState状态机, 104自测
+- ✅ **Grill-Me需求审问** (`grill_me_engine.py`, 1954行): DIKWP五层缺口分析, κ-Snap链追踪, 135自测
+- ✅ **Flask API**: +10端点 (cognitive-health + grill-me)
+- ✅ **前端2面板**: CognitiveHealthPanel + GrillMePanel
+
+### v3.10（对齐三范式 + Goal导向智能体）
+- ✅ **对齐三范式** (`alignment_triad.py`): ψ-Gate语义门控 + 语义防火墙 + Grill-Me审问, 114自测
+- ✅ **Goal导向智能体** (`goal_directed_agent.py`): 目标分解→执行→验证, 非阻塞Grill集成
+
+### v3.9（BabelTele + 超图范畴 + KernelCAT + ConstitutionalAI）
+- ✅ **BabelTele语义压缩器** (`babeltele_compressor.py`): 跨语言语义压缩
+- ✅ **超图范畴论** (`hypergraph_categories.py`): 范畴论框架下超图操作
+- ✅ **KernelCAT调度器** (`kernelcat_scheduler.py`): 内核级任务调度
+- ✅ **Constitutional AI** (`constitutional_agi.py`): 宪法式AI对齐, 116自测
+
+### v3.6-v3.8（ψ-Gate + HTD仿真 + 认知压缩）
+- ✅ v3.6: 8模块+57测试 (ψ-Gate/EML本体/解释坩埚/WM超边/DIKWP桥接/太极周期/MNQ冻结核/治疗师)
+- ✅ v3.7: 3模块+108测试 (HTD仿真/拓扑孤子/Gan-PGW)
+- ✅ v3.8: 2模块+110测试 (GaussEx-EML/认知压缩)
+
+### v3.5（AEGIS演进引擎）
+- ✅ **AEGIS**: ExtendHypergraph on Config Space, 四阶段流水线(Digester→Planner→Evolver→Critic+Gate)
+- ✅ **MUS变体隔离**: K≤5变体簇, CRR>95%
+- ✅ **κ-Gate双轨**: harness_ver与model_weight协同进化
+- ✅ **ψ-Alignment**: G_ego ψ-anchor对齐验证
+
+### v3.4（缓存优化 + 数据接入 + 代码质量）
 - ✅ **DistillPanel三级缓存**：新增 `distillCache.ts` 模块，实现缓存→API→兜底三级数据加载
 - ✅ **Flask服务脚本**：新增 `start_flask.bat`（Windows）和 `flask.service`（Linux systemd）
 - ✅ **T-Processor真实数据**：`TProcessorPanel.tsx` 从 `/api/tprocessor/stats` 获取真实统计数据

@@ -1,133 +1,97 @@
-# 无 LLM 对话生成 + EML 图谱可视化 — 进度报告
+# TOMAS AGI 进度报告 — v3.12
 
-## ✅ 已完成
-
-### 1. 无 LLM 对话生成（φ→Token）
-- **模板生成器**（已实现，立即可用）
-  - `token_generator.py`: `template_generate()` 函数
-  - 核心概念 → 关系网络 → 扩展知识 → 自然语言
-  - 无需训练，基于 EML 图检索 + 结构化模板
-- **神经解码器架构**（已设计，按需训练）
-  - `PhiToTokenDecoder` (PyTorch LSTM)
-  - `PhiToTokenModel`: 训练/推理/保存/加载封装
-  - `generate_response_text()`: 端到端生成（神经/模板双模式）
-- **CLI 集成**
-  - `token_bridge.py`: `--train-decoder`, `--generate`, `--model` 标志
-  - 三级回退：神经解码 → 模板生成 → 内置模板
-
-### 2. 前端无 LLM 生成 UI
-- `DistillPanel.tsx`: 
-  - 💬 **生成回复**按钮（emerald 配色）
-  - 回复显示区（emerald 边框 + "无LLM" 标签）
-  - `TokenBridgeClient.generateResponse()` 浏览器端推理
-- `distiller.ts`:
-  - `generateResponse()`: 模板生成（浏览器本地）
-  - `fuzzyMatch()`: 文本模糊匹配
-  - `extractGraphForVisualization()`: EML → D3 数据
-
-### 3. EML 图谱可视化（D3.js）
-- `EMLGraphVisualization.tsx` (120 行)
-  - ✅ 力导向图布局（D3 forceSimulation）
-  - ✅ 节点大小 ∝ δ（信息存在度）
-  - ✅ 节点颜色 ∝ 𝕀(X)
-  - ✅ 边粗细 ∝ weight
-  - ✅ 边颜色区分：associator（黄）/ causal（蓝）
-  - ✅ 交互：拖拽、缩放、点击节点、悬停提示
-  - ✅ 图例 + 操作提示
-- `DistillPanel.tsx` 集成：
-  - **推理测试** / **图谱可视化** 双 Tab 切换
-  - 加载 EML 文件后自动解析图谱数据
-
-### 4. 构建验证
-- ✅ `vite build`: 1061 modules, 13.07s
-- ✅ TypeScript 编译通过
-- ✅ `d3` + `@types/d3` 已安装
-
-## 🔄 进行中
-
-### 扩展语料蒸馏（后台运行）
-- ⏳ **物理** `physics.txt` → `physics_distilled.eml`
-- ⏳ **化学** `chemistry.txt` → `chemistry_distilled.eml`
-- ⏳ **医学** `medicine.txt` → `medicine_distilled.eml`
-- 预计每个语料需要 2-5 分钟（取决于 DeepSeek API 响应速度）
-
-## 📋 待完成
-
-### 1. 浏览器端 Token Bridge 测试
-- [ ] 启动 dev server (`npm run dev`)
-- [ ] 加载 `quantum_distilled_v2.eml`
-- [ ] 测试概念搜索（φ 空间余弦相似度）
-- [ ] 测试 💬 生成回复（模板生成）
-- [ ] 测试图谱可视化（D3.js 渲染）
-
-### 2. 真实 Embedding 训练
-- [ ] 安装 `sentence-transformers`（系统 Python 已安装）
-- [ ] 修改 `token_bridge.py` 的 `train()` 方法
-  - 用 `SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')` 获取真实 embedding
-  - 训练 encoder 权重（concept text → φ）
-  - 训练 decoder 权重（φ → token logits）
-- [ ] 验证训练后的推理质量提升
-
-### 3. 合并 EML 图
-- [ ] 将物理 + 化学 + 医学 + 量子计算的 EML 图合并
-- [ ] 去重概念（跨领域相同概念只保留一个）
-- [ ] 合并关系边（相同 src-dst 边合并，weight 累加）
-- [ ] 生成 `universal_knowledge.eml`（通用知识图谱）
-
-## 📊 当前代码状态
-
-### 文件变更统计
-| 文件 | 变更类型 | 行数 |
-|------|-----------|------|
-| `token_generator.py` | 新增 | ~780 行 |
-| `token_bridge.py` | 修改 | +150 行 |
-| `distiller.ts` | 修改 | +200 行 |
-| `DistillPanel.tsx` | 修改 | +180 行 |
-| `EMLGraphVisualization.tsx` | 新增 | ~120 行 |
-| `physics.txt` | 新增 | ~180 行 |
-| `chemistry.txt` | 新增 | ~150 行 |
-| `medicine.txt` | 新增 | ~200 行 |
-
-### Git 提交建议
-```bash
-cd tomas_agi/
-git add -A
-git commit -m "feat: 无 LLM 对话生成 + EML 图谱可视化
-
-- token_generator.py: 模板生成 + 神经解码器架构
-- token_bridge.py: 推理引擎集成（神经/模板双模式）
-- EMLGraphVisualization.tsx: D3.js 力导向图
-- DistillPanel.tsx: 推理测试 + 图谱可视化双 Tab
-- distiller.ts: 浏览器端生成 + 图谱数据解析
-- 语料：物理/化学/医学（待蒸馏）"
-
-git push origin main
-```
-
-## 🎯 下一步建议
-
-1. **立即**（5 分钟）：
-   - 检查蒸馏进程是否完成
-   - 浏览器测试 Token Bridge 功能
-
-2. **短期**（1 小时）：
-   - 集成 Sentence-Transformers 获取真实 embedding
-   - 训练 encoder/decoder 权重
-
-3. **中期**（2-3 小时）：
-   - 合并多领域 EML 图
-   - 实现 φ-Gate + D-Core 校验（防御幻觉）
-
-4. **长期**（1 天）：
-   - LSTM 生成器作为"翻译官"（受 φ-Gate 监管）
-   - LLM 作为"创造性生成器"（受 φ-Gate 约束）
-   - 混合架构完整实现
+> 更新日期: 2026-06-23  
+> 当前版本: v3.12  
+> Git: `git@github.com:lisoleg/tomas-agi.git` (backend) + `git@github.com:lisoleg/tomas-chat.git` (frontend)
 
 ---
 
-**当前阻断问题**：无（所有核心功能已实现，蒸馏进程在后台运行）
+## ✅ 已完成
 
-**预计完成时间**：
-- 浏览器测试：10 分钟
-- 真实 Embedding 训练：30 分钟
-- 合并 EML 图：20 分钟
+### v3.12 (06-22/23): 鲁兆DNA + GAT + 金融市场 + 代币经济
+
+**4个新后端模块 (148自测)**:
+- `luzhao_dna.py` — 斐波那契/鲁加斯/八卦数拓扑不变量, DNA复制检测 (35自测)
+- `gat_axioms.py` — GAT广义代数理论 (GATTheory/ArcDSL_GAT/OctonionGAT), 30自测
+- `financial_world_model.py` — LOB/做市商/滑点/ENPV/熔断, 17自测
+- `tokenized_economy.py` — Token/AgentEconomy/UBI/Gini系数, 66自测
+
+**Flask API**: +25端点 (luzhao 5 + gat 6 + financial 7 + tokenized 7), 总计165端点
+
+**前端4面板**: LuZhaoPanel / GATPanel / FinancialWorldPanel / TokenizedEconomyPanel
+
+**UI优化**:
+- Dashboard: +8子系统卡片 +8 panelMap映射 +4活动记录
+- FinancialWorldPanel: alert()→内联展示, +空状态
+- GATPanel: 态射结果内联展示+映射关系可视化
+
+**Bug修复**:
+- server.py: 添加Dict/Any typing导入
+- gat_axioms: is_associative()符号比较修复
+- tokenized_economy: 66自测重写(原中文非代码)
+- cognitive_health: 循环导入修复
+- grill_me_engine: _gates→_registry属性名修复
+
+### v3.11 (06-22): 认知健康 + Grill-Me
+
+- `cognitive_health.py` (1550行, 104自测): 双引擎成瘾模型, HealthAgentState状态机
+- `grill_me_engine.py` (1954行, 135自测): DIKWP五层缺口, GrillExecutionGate, κ-Snap链
+- Flask: +10端点, 前端: CognitiveHealthPanel + GrillMePanel
+
+### v3.10 (06-22): 对齐三范式 + Goal导向
+
+- `alignment_triad.py`: ψ-Gate + 语义防火墙 + Grill-Me, 114自测
+- `goal_directed_agent.py`: 目标分解→执行→验证
+
+### v3.9 (06-22): BabelTele + 超图范畴 + KernelCAT + ConstitutionalAI
+
+- `babeltele_compressor.py`: 跨语言语义压缩
+- `hypergraph_categories.py`: 范畴论超图操作
+- `kernelcat_scheduler.py`: 内核级任务调度
+- `constitutional_agi.py`: 宪法式AI对齐, 116自测
+
+### v3.6-v3.8 (06-21/22)
+
+- v3.6: 8模块+57测试 (ψ-Gate/EML本体/解释坩埚/WM超边/DIKWP/太极周期/MNQ/治疗师)
+- v3.7: 3模块+108测试 (HTD仿真/拓扑孤子/Gan-PGW)
+- v3.8: 2模块+110测试 (GaussEx-EML/认知压缩)
+
+### v2.0 (06-20): 六文章升级
+
+- 14新建+8修改模块, 28 API端点, 52集成测试
+- HNC NLU / 哥德尔智能体 / 因果世界模型 / AgentWeb / Mina+Celo / EML-EHNN
+
+---
+
+## 📊 当前系统状态
+
+| 指标 | 数值 |
+|------|------|
+| 后端模块 | 97+ .py (sim/) |
+| Flask 端点 | 165 |
+| 后端测试 | 1368 passed, 2 skipped |
+| 模块自测 | 148 (v3.12) + 155 (v3.11) + 114 (v3.10) + 116 (v3.9) |
+| 前端面板 | 18+ React面板 |
+| TypeScript | tsc --noEmit 零错误 |
+| 数据库 | 101.6M行 (OwnThink), i_weight已完成 |
+| Git | ✅ 已推送至GitHub |
+
+---
+
+## 📋 遗留事项
+
+- [ ] ARC-AGI-3 真实数据集需 ARC_API_KEY
+- [ ] GAIA 真实数据集需 HUGGINGFACE_TOKEN
+- [ ] 前端新面板单元测试待补充
+- [ ] LOB会话持久化(当前内存存储,重启丢失)
+- [ ] T-Shield SDK与T-Core ASIC硬件协同设计
+
+---
+
+## 🎯 下一步建议
+
+1. **短期**: 为v3.12的25个新API端点添加集成测试
+2. **短期**: 前端新面板添加Vitest单元测试
+3. **中期**: LOB会话持久化到SQLite
+4. **中期**: 添加API响应OpenAPI/Swagger文档
+5. **长期**: T-Core ASIC协处理器物理实现

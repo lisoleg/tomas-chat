@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   IconBrain, IconShield, IconMemory, IconLayers,
-  IconRoute, IconFlame, IconGlobe, IconAuditLog, IconCpu
+  IconRoute, IconFlame, IconGlobe, IconAuditLog, IconCpu,
+  IconLock, IconTarget, IconHeartbeat, IconSearchGavel,
+  IconDna, IconGat, IconFinancial, IconToken
 } from './icons';
 
 // ── Types ──────────────────────────────────────────────
@@ -82,6 +84,14 @@ export default function Dashboard() {
       case 'route': return <IconRoute className="w-5 h-5" />;
       case 'cpu': return <IconCpu className="w-5 h-5" />;
       case 'brain': return <IconBrain className="w-5 h-5" />;
+      case 'lock': return <IconLock className="w-5 h-5" />;
+      case 'target': return <IconTarget className="w-5 h-5" />;
+      case 'heartbeat': return <IconHeartbeat className="w-5 h-5" />;
+      case 'gavel': return <IconSearchGavel className="w-5 h-5" />;
+      case 'dna': return <IconDna className="w-5 h-5" />;
+      case 'gat': return <IconGat className="w-5 h-5" />;
+      case 'financial': return <IconFinancial className="w-5 h-5" />;
+      case 'token': return <IconToken className="w-5 h-5" />;
       default: return <IconCpu className="w-5 h-5" />;
     }
   };
@@ -162,6 +172,14 @@ export default function Dashboard() {
                   router: 'firewall-router',
                   tprocessor: 'tprocessor',
                   tshield: 'tshield',
+                  'alignment-triad': 'alignment-triad',
+                  'goal-agent': 'goal-agent',
+                  'cognitive-health': 'cognitive-health',
+                  'grill-me': 'grill-me',
+                  'luzhao-dna': 'luzhao-dna',
+                  'gat-axioms': 'gat-axioms',
+                  'financial-world': 'financial-world',
+                  'tokenized-economy': 'tokenized-economy',
                 };
                 const target = panelMap[sys.id] || sys.id;
                 window.dispatchEvent(new CustomEvent('tomas-nav', { detail: { panel: target } }));
@@ -359,6 +377,94 @@ function buildSubsystemCards(): SubsystemCard[] {
         { label: '死零', value: '18' },
       ],
     },
+    {
+      id: 'alignment-triad',
+      name: '对齐三范式',
+      description: 'ψ-Gate 语义门控 / 语义防火墙 / Grill-Me 需求审问 — 三层对齐保障',
+      status: 'active',
+      icon: <IconLock className="w-5 h-5" />,
+      stats: [
+        { label: 'ψ-Gate', value: '通过' },
+        { label: '审问', value: '3' },
+      ],
+    },
+    {
+      id: 'goal-agent',
+      name: 'Goal 导向智能体',
+      description: '目标分解 → 执行路径 → 结果验证 — 非阻塞式 Grill 审问集成',
+      status: 'active',
+      icon: <IconTarget className="w-5 h-5" />,
+      stats: [
+        { label: '目标', value: '5' },
+        { label: '完成', value: '3' },
+      ],
+    },
+    {
+      id: 'cognitive-health',
+      name: '认知健康监测',
+      description: '双引擎成瘾模型 (Must-Do / Feel-Better) · 习惯回路 · MUS 反思',
+      status: 'active',
+      icon: <IconHeartbeat className="w-5 h-5" />,
+      stats: [
+        { label: '状态', value: 'NORMAL' },
+        { label: '偏误', value: '0' },
+      ],
+    },
+    {
+      id: 'grill-me',
+      name: 'Grill-Me 需求审问',
+      description: 'DIKWP 五层缺口分析 · κ-Snap 链追踪 · SHA-256 防篡改',
+      status: 'active',
+      icon: <IconSearchGavel className="w-5 h-5" />,
+      stats: [
+        { label: '缺口', value: '0' },
+        { label: '门控', value: 'OPEN' },
+      ],
+    },
+    {
+      id: 'luzhao-dna',
+      name: '鲁兆 DNA 基因库',
+      description: '斐波那契 / 鲁加斯 / 八卦数 — 拓扑不变量与 DNA 复制检测',
+      status: 'active',
+      icon: <IconDna className="w-5 h-5" />,
+      stats: [
+        { label: '不变量', value: '35' },
+        { label: '八卦', value: '8' },
+      ],
+    },
+    {
+      id: 'gat-axioms',
+      name: 'GAT 广义代数理论',
+      description: 'ARC DSL / 八元数代数 — 公理验证 · 自由模型 · 理论态射',
+      status: 'active',
+      icon: <IconGat className="w-5 h-5" />,
+      stats: [
+        { label: '理论', value: '2' },
+        { label: '公理', value: '18' },
+      ],
+    },
+    {
+      id: 'financial-world',
+      name: '金融市场世界模型',
+      description: 'LOB 限价订单簿 · 做市商 · 滑点相位 · ENPV · 熔断机制',
+      status: 'active',
+      icon: <IconFinancial className="w-5 h-5" />,
+      stats: [
+        { label: '会话', value: '0' },
+        { label: '价差', value: '—' },
+      ],
+    },
+    {
+      id: 'tokenized-economy',
+      name: '代币化经济',
+      description: '智能体市场经济 · UBI 全民基本收入 · Gini 系数 · 经济相位',
+      status: 'active',
+      icon: <IconToken className="w-5 h-5" />,
+      stats: [
+        { label: '智能体', value: '0' },
+        { label: 'Gini', value: '—' },
+      ],
+    },
   ];
 }
 
@@ -373,6 +479,10 @@ function generateMockActivities(): ActivityItem[] {
     { id: 'a6', timestamp: new Date(now - 900000), type: 'firewall', message: '语义防火墙检查通过 — 用户输入', detail: 'ADC 风险评分: 0.02 (安全), DIKWP层: Data' },
     { id: 'a7', timestamp: new Date(now - 1200000), type: 'audit', message: 'MUS 仲裁激活 — "牛顿是科学家还是炼金术士?"', detail: '悖论对: (科学家, 炼金术士) → 双存' },
     { id: 'a8', timestamp: new Date(now - 1500000), type: 'memory', message: '矛盾记忆双存 — "心主神明" ⊗ "脑主神明"', detail: 'MUS 双存, ψ锚分属不同认知态' },
+    { id: 'a9', timestamp: new Date(now - 1800000), type: 'audit', message: '对齐三范式检查通过 — ψ-Gate + 语义防火墙', detail: 'ψ=0.81, ADC风险: 0.03, Grill: 0缺口' },
+    { id: 'a10', timestamp: new Date(now - 2100000), type: 'memory', message: '认知健康监测 — 状态: NORMAL', detail: 'Must-Do引擎: 0偏误, Feel-Better引擎: 0成瘾' },
+    { id: 'a11', timestamp: new Date(now - 2400000), type: 'firewall', message: '鲁兆DNA检测 — 斐波那契比率匹配', detail: 'Wave 2: 2.618x (φ²), Wave 3: 4.236x (φ³)' },
+    { id: 'a12', timestamp: new Date(now - 2700000), type: 'route', message: 'GAT公理验证 — Octonion结合律', detail: '480/512 组合验证通过, 32组符号翻转' },
   ];
 }
 

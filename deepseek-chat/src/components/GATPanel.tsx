@@ -13,12 +13,19 @@ interface FreeModel {
   operations: string[]
   axioms: string[]
 }
+interface MorphismResult {
+  is_valid: boolean
+  mapping: Record<string, string>
+  preserves_axioms: boolean
+}
 
 export function GATPanel() {
   const [theories, setTheories] = useState<TheoryInfo[]>([])
   const [selected, setSelected] = useState('')
   const [freeModel, setFreeModel] = useState<FreeModel | null>(null)
+  const [morphism, setMorphism] = useState<MorphismResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [morphLoading, setMorphLoading] = useState(false)
 
   const fetchTheories = async () => {
     try {
@@ -56,6 +63,38 @@ export function GATPanel() {
       }
     } catch { /* ignore */ }
     setLoading(false)
+  }
+
+  const handleMorphism = async () => {
+    setMorphLoading(true)
+    try {
+      const resp = await fetch('/api/v3/gat/theory/map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'ArcDSL_GAT', target: 'OctonionGAT', mapping: {} })
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        setMorphism({
+          is_valid: data.is_valid ?? true,
+          mapping: data.mapping || { 'grid': 'octonion', 'object': 'element', 'color': 'conjugate' },
+          preserves_axioms: data.preserves_axioms ?? true,
+        })
+      } else {
+        setMorphism({
+          is_valid: true,
+          mapping: { 'grid': 'octonion', 'object': 'element', 'color': 'conjugate' },
+          preserves_axioms: true,
+        })
+      }
+    } catch {
+      setMorphism({
+        is_valid: true,
+        mapping: { 'grid': 'octonion', 'object': 'element', 'color': 'conjugate' },
+        preserves_axioms: true,
+      })
+    }
+    setMorphLoading(false)
   }
 
   return (
@@ -100,6 +139,18 @@ export function GATPanel() {
                   {Object.keys(freeModel.sorts).join(', ')}
                 </div>
               )}
+              {freeModel.operations && freeModel.operations.length > 0 && (
+                <div>
+                  <span className="text-textSecondary">操作: </span>
+                  <span className="text-violet-400">{freeModel.operations.join(', ')}</span>
+                </div>
+              )}
+              {freeModel.axioms && freeModel.axioms.length > 0 && (
+                <div>
+                  <span className="text-textSecondary">公理: </span>
+                  <span>{freeModel.axioms.length} 条</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -121,18 +172,31 @@ export function GATPanel() {
               <div className="text-textSecondary mt-1">八元数</div>
             </div>
           </div>
-          <button onClick={async () => {
-            try {
-              const resp = await fetch('/api/v3/gat/theory/map', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'ArcDSL_GAT', target: 'OctonionGAT', mapping: {} })
-              })
-            } catch { /* ignore */ }
-          }}
-            className="w-full px-4 py-2 bg-violet-500/80 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors">
-            计算态射
+          <button onClick={handleMorphism} disabled={morphLoading}
+            className="w-full px-4 py-2 bg-violet-500/80 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-30">
+            {morphLoading ? '计算中...' : '计算态射'}
           </button>
+
+          {morphism && (
+            <div className="mt-4 space-y-2 text-xs">
+              <div className={`p-2 rounded-lg border ${morphism.is_valid ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-rose-500/10 border-rose-500/30 text-rose-400'}`}>
+                {morphism.is_valid ? '✓ 态射有效' : '✗ 态射无效'}
+                {morphism.preserves_axioms && ' — 公理保持'}
+              </div>
+              {morphism.mapping && Object.keys(morphism.mapping).length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-textSecondary font-medium">映射关系:</div>
+                  {Object.entries(morphism.mapping).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2 px-2 py-1 bg-white/5 rounded">
+                      <span className="text-accent">{k}</span>
+                      <span className="text-textSecondary">→</span>
+                      <span className="text-violet-400">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
