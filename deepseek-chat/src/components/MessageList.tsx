@@ -9,7 +9,7 @@ interface MessageListProps {
   onFeedback?: (messageId: string, feedback: 'like' | 'dislike' | null) => void
 }
 
-export function MessageList({ messages, onRetryDirect, onFeedback }: MessageListProps) {
+function MessageList({ messages, onRetryDirect, onFeedback }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -38,3 +38,9 @@ export function MessageList({ messages, onRetryDirect, onFeedback }: MessageList
     </div>
   )
 }
+
+export const MessageList = React.memo(MessageList, (prev, next) => {
+  return prev.messages === next.messages
+    && prev.onRetryDirect === next.onRetryDirect
+    && prev.onFeedback === next.onFeedback
+})

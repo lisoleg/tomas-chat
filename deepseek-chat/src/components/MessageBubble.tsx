@@ -88,7 +88,7 @@ function getModeBadge(mode: string): { label: string; color: string; bg: string 
   return config[mode] || null
 }
 
-export function MessageBubble({ message, onRetryDirect, onFeedback }: MessageBubbleProps) {
+function MessageBubble({ message, onRetryDirect, onFeedback }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   // 用户消息右对齐气泡；助手消息左对齐
   const wrapperCls = isUser
@@ -393,3 +393,9 @@ function TypingDots() {
     </div>
   )
 }
+
+export const MessageBubble = React.memo(MessageBubble, (prev, next) => {
+  return prev.message === next.message
+    && prev.onRetryDirect === next.onRetryDirect
+    && prev.onFeedback === next.onFeedback
+})

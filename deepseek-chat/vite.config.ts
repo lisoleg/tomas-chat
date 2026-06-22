@@ -28,6 +28,8 @@ export default defineConfig({
           'vendor-three': ['three'],
           'vendor-d3': ['d3'],
           'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          'vendor-highlight': ['highlight.js'],
+          'vendor-icons': ['lucide-react'],
         },
       },
     },
