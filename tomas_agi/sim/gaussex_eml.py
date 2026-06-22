@@ -198,9 +198,10 @@ class GaussExSystem:
 
     def __post_init__(self):
         if not self.system_id:
-            self.system_id = f"gaussex_{hashlib.md5(
-                f'{self.fibre.name}_{self.noise.mean}_{time.time()}'.encode()
-            ).hexdigest()[:8]}"
+            self.system_id = (
+                f"gaussex_"
+                f"{hashlib.md5(str((self.fibre.name, self.noise.mean, time.time())).encode()).hexdigest()[:8]}"
+            )
 
     def marginal(self, variable: str) -> GaussianNoise:
         """计算边际分布 — 对某一变量的后验分布"""

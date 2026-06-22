@@ -32,6 +32,23 @@ from models import (
 app = Flask(__name__)
 CORS(app)
 
+# ---- Flask-Caching (graceful fallback if not installed) ----
+try:
+    from flask_caching import Cache
+    cache = Cache(app, config={"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 60})
+    _has_cache = True
+except ImportError:
+    cache = None
+    _has_cache = False
+
+def cached_query(timeout=60):
+    """Decorator: cache endpoint with query_string key. No-op if flask-caching not installed."""
+    def decorator(f):
+        if _has_cache:
+            return cache.cached(timeout=timeout, query_string=True)(f)
+        return f
+    return decorator
+
 # ---- Prometheus Metrics ----
 REQUEST_COUNT = Counter('tomas_http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('tomas_http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
@@ -134,6 +151,7 @@ def _ts_to_dt(ts):
 # ==================== 语料 API ====================
 
 @app.route("/api/corpus", methods=["GET"])
+@cached_query(timeout=60)
 def get_corpus():
     """Get Corpus
     ---
@@ -145,7 +163,17 @@ def get_corpus():
     """
     session = get_session()
     try:
-        rows = session.query(CorpusEntry).order_by(CorpusEntry.created_at.desc()).all()
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 100)
+        offset = (page - 1) * per_page
+        total = session.query(CorpusEntry).count()
+        rows = (
+            session.query(CorpusEntry)
+            .order_by(CorpusEntry.created_at.desc())
+            .limit(per_page)
+            .offset(offset)
+            .all()
+        )
         entries = [
             {
                 "id": r.id,
@@ -157,7 +185,16 @@ def get_corpus():
             }
             for r in rows
         ]
-        return jsonify({"success": True, "data": entries})
+        return jsonify({
+            "success": True,
+            "data": entries,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page,
+            },
+        })
     finally:
         session.close()
 
@@ -216,6 +253,7 @@ def delete_corpus(entry_id):
 # ==================== 冲突决策 API ====================
 
 @app.route("/api/conflicts", methods=["GET"])
+@cached_query(timeout=60)
 def get_conflicts():
     """Get Conflicts
     ---
@@ -227,7 +265,16 @@ def get_conflicts():
     """
     session = get_session()
     try:
-        rows = session.query(ConflictDecision).all()
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 100)
+        offset = (page - 1) * per_page
+        total = session.query(ConflictDecision).count()
+        rows = (
+            session.query(ConflictDecision)
+            .limit(per_page)
+            .offset(offset)
+            .all()
+        )
         decisions = [
             {
                 "conflictId": r.conflict_id,
@@ -238,7 +285,16 @@ def get_conflicts():
             }
             for r in rows
         ]
-        return jsonify({"success": True, "data": decisions})
+        return jsonify({
+            "success": True,
+            "data": decisions,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page,
+            },
+        })
     finally:
         session.close()
 
@@ -280,6 +336,7 @@ def add_conflict():
 # ==================== 聊天会话 API ====================
 
 @app.route("/api/sessions", methods=["GET"])
+@cached_query(timeout=60)
 def get_sessions():
     """Get Sessions
     ---
@@ -291,7 +348,17 @@ def get_sessions():
     """
     session = get_session()
     try:
-        rows = session.query(ChatSession).order_by(ChatSession.updated_at.desc()).all()
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 100)
+        offset = (page - 1) * per_page
+        total = session.query(ChatSession).count()
+        rows = (
+            session.query(ChatSession)
+            .order_by(ChatSession.updated_at.desc())
+            .limit(per_page)
+            .offset(offset)
+            .all()
+        )
         sessions = [
             {
                 "sessionId": r.session_id,
@@ -302,7 +369,16 @@ def get_sessions():
             }
             for r in rows
         ]
-        return jsonify({"success": True, "data": sessions})
+        return jsonify({
+            "success": True,
+            "data": sessions,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page,
+            },
+        })
     finally:
         session.close()
 
@@ -416,6 +492,7 @@ def save_api_key():
 # ==================== 知识条目 API ====================
 
 @app.route("/api/knowledge", methods=["GET"])
+@cached_query(timeout=60)
 def get_knowledge():
     """Get Knowledge
     ---
@@ -427,7 +504,16 @@ def get_knowledge():
     """
     session = get_session()
     try:
-        rows = session.query(KnowledgeItem).all()
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 100)
+        offset = (page - 1) * per_page
+        total = session.query(KnowledgeItem).count()
+        rows = (
+            session.query(KnowledgeItem)
+            .limit(per_page)
+            .offset(offset)
+            .all()
+        )
         items = [
             {
                 "id": r.id,
@@ -439,7 +525,16 @@ def get_knowledge():
             }
             for r in rows
         ]
-        return jsonify({"success": True, "data": items})
+        return jsonify({
+            "success": True,
+            "data": items,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page,
+            },
+        })
     finally:
         session.close()
 

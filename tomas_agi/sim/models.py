@@ -91,6 +91,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
     __table_args__ = (
         UniqueConstraint("session_id", name="uq_session_id"),
+        Index("idx_chat_session_updated_at", "updated_at"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -115,6 +116,9 @@ class ApiKey(Base):
 
 class KnowledgeItem(Base):
     __tablename__ = "knowledge_items"
+    __table_args__ = (
+        Index("idx_knowledge_item_concept", "concept"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     concept = Column(Text, nullable=False)

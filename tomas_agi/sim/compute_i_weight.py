@@ -72,6 +72,7 @@ def _executemany_with_retry(conn, sql, batch, max_retries=5):
 def compute_i_weight(
     db_path: str = DB_PATH,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    resume: bool = False,
     dry_run: bool = False,
 ):
     """
@@ -173,7 +174,26 @@ def compute_i_weight(
         print(f"  📊 前缀数: {len(prefixes):,}")
         print()
 
+
+        # ---- Resume from checkpoint ----
+        start_prefix_idx = 0
+        if resume:
+            import json as _json
+            try:
+                with open("compute_i_weight_resume.json", "r") as _f:
+                    _ck = _json.load(_f)
+                start_prefix_idx = _ck.get("prefix_idx", 0)
+                total_rows_updated = _ck.get("total_rows_updated", 0)
+                print(f"  🔄 续跑模式：从 prefix_idx={start_prefix_idx:,} 继续（已更新 {total_rows_updated:,} 行）")
+            except FileNotFoundError:
+                print("  ⚠️ 未找到 checkpoint 文件，从头开始")
+                start_prefix_idx = 0
+
+        # 跳过已处理的 prefix
+        if start_prefix_idx > 0:
+            prefixes = prefixes[start_prefix_idx:]
         for prefix_idx, prefix in enumerate(prefixes):
+            _last_ckpt_time = time.time()
             # 确保没有活跃事务（SELECT 可能开启了隐式事务）
             try:
                 conn.execute("ROLLBACK")
@@ -240,6 +260,7 @@ def compute_i_weight(
                 conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 checkpoint_batch = 0
 
+
             # 进度报告
             now = time.time()
             if now - last_report >= 10.0 or prefix_idx == len(prefixes) - 1:
@@ -253,6 +274,16 @@ def compute_i_weight(
                     f"| prefix={prefix!r}"
                 )
                 last_report = now
+
+            # 保存 checkpoint（每 60 秒）
+            if now - _last_ckpt_time >= 60.0:
+                import json as _json
+                try:
+                    with open("compute_i_weight_resume.json", "w") as _f:
+                        _json.dump({"prefix_idx": prefix_idx, "prefix": prefix, "total_rows_updated": total_rows_updated, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")}, _f)
+                except:
+                    pass
+                _last_ckpt_time = now
 
         t1 = time.time()
         print()
@@ -282,10 +313,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch", type=int, default=DEFAULT_BATCH_SIZE, help="批次大小")
     parser.add_argument("--dry-run", action="store_true", help="Dry run（不实际更新）")
     parser.add_argument("--prefix-len", type=int, default=2, help="前缀长度（默认 2）")
+    parser.add_argument("--resume", action="store_true", help="从 checkpoint 文件续跑（compute_i_weight_resume.json）")
     args = parser.parse_args()
 
     compute_i_weight(
         db_path=args.db,
         batch_size=args.batch,
         dry_run=args.dry_run,
+        resume=args.resume,
     )
