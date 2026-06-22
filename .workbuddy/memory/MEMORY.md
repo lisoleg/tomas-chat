@@ -81,10 +81,12 @@
 - NASGA: octonion_mul.v, delta_compute.v, spectral_engine.v (Zynq-7020)
 
 ## 遗留事项
-- v3.9-v3.12 + 优化 已 git commit + push 完成 (commit 1691907 + 1e14e03 + 433d562 + 14b02fb)
-- ARC-AGI-3 API Key 已配置 (f596078f...), 25个游戏列表获取成功, demo评测进行中
+- v3.9-v3.12 + 优化 已 git commit + push 完成 (commit 1691907 + 1e14e03 + 433d562 + 14b02fb + bc64346)
+- ARC-AGI-3 API Key 已配置 (f596078f...), 25个游戏列表获取成功, demo RHAE 66.67%
 - GAIA 真实数据集需 HUGGINGFACE_TOKEN
 - 前端面板单元测试: 8文件68测试全部通过 (含v3.12四个新面板35测试)
-- LOB会话持久化: 已实现 LOBSessionStore (内存+SQLite双写, 重启自动恢复)
-- 前端代码分割: 22面板React.lazy, 首屏gzip 674KB→349KB (改善48%)
-- 生产构建: npm run build 通过, 22个独立chunk
+- LOB会话持久化: 已实现 LOBSessionStore (内存+SQLite双写, 重启自动恢复), 已验证
+- 前端代码分割: 23面板React.lazy (含ChatArea), 首屏gzip 674KB→30.62KB (改善95%)
+- 生产构建: npm run build 通过, 23个独立chunk
+- server.py 导入路径已修复: 全部 from sim.xxx → from xxx (43处)
+- server.py 路由冲突已修复: /lob/<session_id> → /lob/status/<session_id>
