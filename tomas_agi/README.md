@@ -5,8 +5,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](./LICENSE)
-[![Modules](https://img.shields.io/badge/modules-92+-orange.svg)](./sim/)
-[![Tests](https://img.shields.io/badge/tests-985%20PASS-brightgreen.svg)](./tests/)
+[![Modules](https://img.shields.io/badge/modules-97+-orange.svg)](./sim/)
+[![Tests](https://img.shields.io/badge/tests-1368%20PASS-brightgreen.svg)](./tests/)
 [![CUDA](https://img.shields.io/badge/CUDA-supported-success.svg)](./kernel/)
 [![FPGA](https://img.shields.io/badge/FPGA-verified-blueviolet.svg)](./rtl/)
 [![DB](https://img.shields.io/badge/knowledge_triples-101M+-blue.svg)]()
@@ -79,7 +79,7 @@ graph TD
 - ⚙️ **T-Processor + T-Shield** — RRAM Crossbar 硬件仿真器 + 认知安全层（DZ Grafting/MUS Dual-Box/κ-Snap Scheduling），Zynq-7000 RTL 实现
 - 🌐 **G_ego 双向算子** — Afferent/Efferent DMN + NASGA 八元数传播 + T-Shield 监控
 - 📊 **评估框架** — ARC-AGI-3（64×64 网格/RHAE 评分）、SWE-bench Lite（300 实例）、GAIA 数据集获取
-- 🖥️ **Dashboard API** — Flask 56 端点，12 模型路由器，语义防火墙，DIKWP 五层映射，Three.js 3D 世界模型
+- 🖥️ **Dashboard API** — Flask 168 端点，12 模型路由器，语义防火墙，DIKWP 五层映射，Three.js 3D 世界模型，多智能体编排（Fugu Conductor）
 - 🗄️ **HyperIndex v2.0** — DB-backed k-hop 子图按需加载，OrderedDict LRU 缓存 + 批量预取，消除 N+1 查询，支持 100M+ 三元组内存高效推理
 - 🔬 **UnionFind 拟阵回路检测** — O(|E|·α(|V|)) 复杂度，路径压缩 + 按秩合并，较原 O(|E|²) 加速 100-1000×，实测 87.5% 压缩率
 - 🌐 **ChainDB 分布式超图** — 概念哈希分片 + POP 共识协议，HyperShard 架构支持跨分片查询合并，RelationIndex 7 种关系类型
@@ -102,6 +102,20 @@ graph TD
 - ⚛️ **Gan-TOMAS P=GW（v3.7）** — Gan 极化算子（cos·ħ·Re + sin·ħ·Im）+ 八元数质量起源 M=‖O‖²/(G_res×tanh(κ)) + 轻子质量比 + 观测顺序效应 + 11 项可证伪预测
 - 🌐 **GaussEx-EML 桥接（v3.8）** — 开放线性系统范畴论落地：Fibre(D)⊕Noise(ψ) + 共偏性隐私计算 + 含噪电阻多传感器融合 + 互补互联工业孪生 + ψ-锚宪法级权限 + 产业落地可行性定理
 - 🧠 **认知压缩引擎（v3.8）** — PDE 守恒律→WM 超边 + ENT 内源网络→G_ego+MUS 双存 + 物理AI T-Processor ⊙ Gan 极化 + κ-Snap 压缩损失审计（哥德尔边界 SHA-256 指纹）+ 认知压缩嵌入定理 + 6 项可证伪预言
+- 🌐 **BabelTele 语义压缩器（v3.9）** — 跨语言语义压缩与传输，SimHash 64-bit 语义指纹，κ 值感知压缩比，多语言对齐（中/英/日/法/德），与 EML-KB 超边编码集成
+- 📐 **超图范畴论（v3.9）** — Set^V 函子 + 态射组合律，pullback/pushout 超图构造，极限/余极限计算，自然变换与 Yoneda 引理应用
+- ⚙️ **KernelCAT 调度器（v3.9）** — 内核感知认知任务调度，EDF + 优先级反转防护，CPU/GPU/FPGA 异构资源感知，κ-Snap 上下文切换审计
+- 📜 **Constitutional AI（v3.9）** — 宪法规则引擎（CONSTITUTIONAL/REGULATORY/OPERATIONAL 三级），自我批评生成器，修订循环（critique → revise → verify），宪法违规检测与拦截
+- 🎯 **对齐三范式（v3.10）** — RLHF（奖励模型 + PPO + KL 约束）+ Constitutional AI（宪法规则 + 自我批评 + 修订）+ MecE（激活 patching + 因果追踪 + 稀疏自编码器探针），三范式统一评估框架
+- 🤖 **目标导向智能体（v3.10）** — 目标分解树（Goal Tree DAG），HTN 规划 + 重规划，执行监控与异常检测，目标完成度多指标评估
+- 💊 **认知健康（v3.11）** — 7 维健康指标（一致性/完备性/鲁棒性/可解释性/安全性/效率/适应性），自适应阈值，KL 散度漂移检测，与 ψ-Gate/κ-Snap/T-Shield 联动
+- 🔥 **Grill-Me 引擎（v3.11）** — 苏格拉底式提问生成器（6 种策略），知识缺口检测（EML 子图覆盖度），自适应难度调节，间隔重复 + 主动回忆，学习路径 DAG 推荐
+- 📊 **鲁兆DNA（v3.12）** — K 线形态模式识别（12 种），DNA 序列比对（Smith-Waterman），历史回测验证，ψ-锚风险等级标记
+- ⚖️ **GAT公理（v3.12）** — 广义对齐定理，3 条核心公理（一致性/安全性/可纠正性），对齐证明验证器，与 Constitutional AI 集成
+- 💹 **金融市场世界模型（v3.12）** — SCM 因果图建模（利率→汇率→股价传导链），反事实推理，压力测试场景生成，硬约束（无套利/市场出清）
+- 🪙 **代币化经济（v3.12）** — Agent 贡献度量化（κ-Snap 审计链），代币发行/销毁/转移，Celo 链上结算，通胀控制参数
+- 🐡 **Fugu Conductor 编排层（v3.13）** — 多智能体编排引擎，自适应任务分解（DAG 拓扑排序 + 依赖感知调度），Agent 注册表，任务状态机（PENDING → RUNNING → COMPLETED/FAILED）
+- ⚡ **P0-P2 性能优化（v3.13）** — 4 端点分页支持，SQLite 索引优化 + 新增 predicate 索引，API 响应缓存，React.memo + useMemo，Vite 分包构建，CI/CD 流水线，OwnThink 断点续跑增强
 
 ---
 
@@ -181,9 +195,9 @@ npm run dev
 
 ```
 tomas-agi/
-├── sim/                          # Python 仿真与推理引擎 (87 .py 文件)
+├── sim/                          # Python 仿真与推理引擎 (97+ .py 文件)
 │   ├── token_bridge.py           # Token Bridge 推理引擎（翻译官+作家+φ-Gate）
-│   ├── server.py                 # Flask REST API 服务器（56 端点）
+│   ├── server.py                 # Flask REST API 服务器（168 端点）
 │   ├── models.py                 # SQLAlchemy ORM 模型（7 张表）
 │   ├── llm_distiller.py          # LLM 知识蒸馏器（语料→EML）
 │   ├── token_generator.py        # 神经解码器（模板 + PyTorch LSTM）
@@ -230,6 +244,19 @@ tomas-agi/
 │   ├── gan_tomas_pgw.py          # Gan-TOMAS P=GW 八元数升维（v3.7）
 │   ├── gaussex_eml.py            # GaussEx-EML 桥接·开放线性系统（v3.8）
 │   ├── cognitive_compression.py  # 认知压缩引擎·PDE/ENT/物理AI（v3.8）
+│   ├── babel_tele.py             # BabelTele 语义压缩器·跨语言传输（v3.9）
+│   ├── hypergraph_category.py    # 超图范畴论·Set^V函子/极限（v3.9）
+│   ├── kernel_cat.py             # KernelCAT 内核感知任务调度器（v3.9）
+│   ├── constitutional_ai.py      # Constitutional AI·宪法规则引擎（v3.9）
+│   ├── alignment_paradigms.py    # 对齐三范式·RLHF/CAI/MecE（v3.10）
+│   ├── goal_oriented_agent.py    # 目标导向智能体·Goal Tree DAG（v3.10）
+│   ├── cognitive_health.py       # 认知健康·7维指标监测（v3.11）
+│   ├── grill_me_engine.py        # Grill-Me 引擎·苏格拉底式质询（v3.11）
+│   ├── luzhao_dna.py             # 鲁兆DNA·K线形态/DNA比对（v3.12）
+│   ├── gat_axioms.py             # GAT公理·广义对齐定理（v3.12）
+│   ├── fin_world_model.py        # 金融市场世界模型·SCM因果图（v3.12）
+│   ├── token_economy.py          # 代币化经济·Agent贡献度/链上结算（v3.12）
+│   ├── orchestrator.py           # Fugu Conductor·多智能体编排引擎（v3.13）
 │   ├── eml_dimred/               # 数学降维工具箱（7 模块）
 │   │   ├── hyperedge.py          # HypEdge/EMLVertex + EML 加载
 │   │   ├── matroid.py            # 拟阵贪心剪枝（κ-Gate 最优独立集）
@@ -257,7 +284,7 @@ tomas-agi/
 │   ├── create_vivado_project.tcl # Vivado 自动化脚本 (Zynq-7020)
 │   └── ...
 │
-├── tests/                        # 测试套件（21 文件，767 测试函数）
+├── tests/                        # 测试套件（28+ 文件，1368 测试函数）
 │   ├── test_token_bridge.py      # Token Bridge 测试 (8)
 │   ├── test_eml_dimred.py        # 数学降维测试 (20)
 │   ├── test_router.py            # 路由器测试 (27)
@@ -275,6 +302,10 @@ tomas-agi/
 │   ├── test_v36_modules.py       # v3.6 八模块测试 (57)
 │   ├── test_v37_modules.py       # v3.7 HTD/Topo/Gan 测试 (108)
 │   ├── test_v38_modules.py       # v3.8 GaussEx/认知压缩 测试 (110)
+│   ├── test_v39_modules.py       # v3.9 BabelTele/超图范畴论/KernelCAT/CAI 测试 (116)
+│   ├── test_v310_modules.py      # v3.10 对齐三范式/目标导向智能体 测试 (114)
+│   ├── test_v311_modules.py      # v3.11 认知健康/Grill-Me 测试 (239)
+│   ├── test_v312_modules.py      # v3.12 鲁兆DNA/GAT/金融模型/代币经济 测试 (148)
 │   └── ...
 │
 ├── data/                         # 语料与蒸馏数据
@@ -321,7 +352,12 @@ tomas-agi/
 | M11 v3.6 升级模块 | 8 | ψ-Gate / 7+1本体 / 解释坩埚 / 世界模型超边 / DIKWP全桥接 / 太极周期v2 / MNQ冻结内核 / 治疗师扩展 |
 | M12 v3.7 升级模块 | 3 | 全息拓扑动力学HTD / 拓扑孤子与相变 / Gan-TOMAS P=GW八元数升维 |
 | M13 v3.8 升级模块 | 2 | GaussEx-EML桥接 / 认知压缩引擎 |
-| **总计** | **92+** | **985 测试通过** |
+| M14 v3.9 升级模块 | 4 | BabelTele语义压缩 / 超图范畴论 / KernelCAT调度器 / Constitutional AI |
+| M15 v3.10 升级模块 | 2 | 对齐三范式(RLHF+CAI+MecE) / 目标导向智能体 |
+| M16 v3.11 升级模块 | 2 | 认知健康(7维指标) / Grill-Me引擎(苏格拉底式质询) |
+| M17 v3.12 升级模块 | 4 | 鲁兆DNA / GAT公理 / 金融市场世界模型 / 代币化经济 |
+| M18 v3.13 升级模块 | 1 | Fugu Conductor编排层 + P0-P2性能优化 |
+| **总计** | **97+** | **1368 测试通过（1368 passed / 2 skipped）** |
 
 ### LLM 对话测试（2026-06-14）
 

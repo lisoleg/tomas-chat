@@ -1,6 +1,6 @@
 # TOMAS AGI v2.0 — REST API 文档
 
-> **版本**: v2.0 (六文章升级) | **日期**: 2026-06-21
+> **版本**: v2.1 (编排层 + 分页 API) | **日期**: 2026-06-23
 > **Base URL**: `http://localhost:5000/api/v2`
 
 ---
@@ -14,6 +14,8 @@
 5. [密码学桥接（Mina + Celo）](#5-密码学桥接mina--celo)
 6. [因果世界模型 + Aether + EHNN](#6-因果世界模型--aether--ehnn)
 7. [通用错误格式](#7-通用错误格式)
+8. [多智能体编排 API](#8-多智能体编排-api)
+9. [分页 API 规范](#9-分页-api-规范)
 
 ---
 
@@ -786,6 +788,274 @@ EML-EHNN 等变超图神经网络前向传播（ℐ(e) 加权超边 + MUS-Aware 
 
 ---
 
+## 8. 多智能体编排 API
+
+Fugu Conductor 编排引擎（`sim/orchestrator.py`）提供多智能体任务编排能力：自适应任务分解（DAG 拓扑排序）、Agent 注册表管理、任务状态机（PENDING → RUNNING → COMPLETED/FAILED）。
+
+### 8.1 GET `/api/orchestrator/agents`
+
+查询已注册的 Agent 列表（含能力标签、状态、当前负载）。
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "agents": [
+      {
+        "agent_id": "agent-001",
+        "name": "Translator Agent",
+        "capabilities": ["nlu", "translation", "summarization"],
+        "status": "idle",
+        "current_tasks": 0,
+        "max_concurrent": 3,
+        "registered_at": "2026-06-23T10:00:00Z"
+      },
+      {
+        "agent_id": "agent-002",
+        "name": "Writer Agent",
+        "capabilities": ["creative_writing", "reasoning"],
+        "status": "busy",
+        "current_tasks": 2,
+        "max_concurrent": 3,
+        "registered_at": "2026-06-23T10:05:00Z"
+      }
+    ],
+    "total_agents": 2,
+    "idle_agents": 1,
+    "busy_agents": 1
+  }
+}
+```
+
+---
+
+### 8.2 POST `/api/orchestrator/orchestrate`
+
+提交编排任务，Fugu Conductor 自动分解为 DAG 子任务图并调度执行。
+
+**请求体**
+```json
+{
+  "task_description": "string (required) — 自然语言任务描述",
+  "preferred_agents": ["agent-001", "agent-002"],
+  "priority": "low | normal | high (default: normal)",
+  "max_retries": 3,
+  "timeout_seconds": 300
+}
+```
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task-20260623-001",
+    "status": "RUNNING",
+    "dag": {
+      "nodes": [
+        {"id": "subtask-1", "name": "解析任务", "status": "COMPLETED", "agent_id": "agent-001"},
+        {"id": "subtask-2", "name": "生成方案", "status": "RUNNING", "agent_id": "agent-002"},
+        {"id": "subtask-3", "name": "验证结果", "status": "PENDING", "depends_on": ["subtask-2"]}
+      ],
+      "edges": [
+        {"from": "subtask-1", "to": "subtask-2"},
+        {"from": "subtask-2", "to": "subtask-3"}
+      ]
+    },
+    "total_subtasks": 3,
+    "completed_subtasks": 1,
+    "estimated_time_seconds": 45
+  }
+}
+```
+
+**错误响应**
+```json
+{ "success": false, "error": "task_description is required" }  // HTTP 400
+{ "success": false, "error": "No available agents with matching capabilities" }  // HTTP 503
+```
+
+---
+
+### 8.3 GET `/api/orchestrator/stats`
+
+查询编排引擎统计信息（任务总数、成功率、平均延迟、活跃 Agent 数）。
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "total_tasks": 156,
+    "completed_tasks": 142,
+    "failed_tasks": 8,
+    "running_tasks": 6,
+    "success_rate": 0.910,
+    "avg_latency_seconds": 38.5,
+    "p50_latency_seconds": 25.0,
+    "p99_latency_seconds": 120.0,
+    "active_agents": 5,
+    "total_agents": 8,
+    "total_subtasks_executed": 468
+  }
+}
+```
+
+---
+
+## 9. 分页 API 规范
+
+v3.13 P0 性能优化为 4 个重查询端点添加了分页支持，避免全量返回导致的内存峰值。
+
+### 9.1 通用分页参数
+
+以下分页参数适用于所有支持分页的端点：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `page` | int | 1 | 页码（从 1 开始） |
+| `page_size` | int | 20 | 每页条数（最大 100） |
+
+**通用分页响应结构**：
+```json
+{
+  "success": true,
+  "data": {
+    "items": ["... — 当前页数据条目"],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 15358857,
+      "total_pages": 767943,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+### 9.2 GET `/api/corpus`（分页）
+
+获取语料条目列表（分页）。
+
+**Query 参数**
+```
+?page=1&page_size=20&domain=physics
+```
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {"id": 1, "text": "...", "domain": "physics", "concepts_count": 15, "relations_count": 23},
+      {"id": 2, "text": "...", "domain": "physics", "concepts_count": 8, "relations_count": 12}
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 156,
+      "total_pages": 8,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+### 9.3 GET `/api/conflicts`（分页）
+
+获取冲突决策记录列表（分页）。
+
+**Query 参数**
+```
+?page=1&page_size=20&concept=人工智能
+```
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {"conflict_id": "c001", "concept_name": "人工智能", "domain": "AI", "decision": "merge"}
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 42,
+      "total_pages": 3,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+### 9.4 GET `/api/sessions`（分页）
+
+获取聊天会话列表（分页）。
+
+**Query 参数**
+```
+?page=1&page_size=20
+```
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {"session_id": "s001", "title": "物理问答", "messages_count": 8, "created_at": "2026-06-23T10:00:00Z"}
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 89,
+      "total_pages": 5,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+### 9.5 GET `/api/knowledge`（分页）
+
+获取知识条目列表（分页，支持 `min_i_weight` 过滤）。
+
+**Query 参数**
+```
+?page=1&page_size=20&min_i_weight=1.5&type=concept
+```
+
+**响应**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {"id": 1, "concept": "牛顿第二定律", "content": "...", "source": "physics.txt", "type": "concept", "i_weight": 2.15}
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total_items": 15358857,
+      "total_pages": 767943,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+> **性能说明**：分页查询使用 SQLite `LIMIT ... OFFSET ...` 语法，配合 `idx_triples_i_weight` 索引实现高效分页。`page_size` 上限 100，防止大页查询导致内存压力。
+
+---
+
 ## 附录：通用错误格式
 
 所有端点统一错误响应格式：
@@ -840,7 +1110,10 @@ EML-EHNN 等变超图神经网络前向传播（ℐ(e) 加权超边 + MUS-Aware 
 | 26 | GET | `/api/v2/aether/scm/confounders` | Aether 桥接 |
 | 27 | POST | `/api/v2/ehnn/forward` | EML-EHNN |
 | 28 | POST | `/api/v2/ehnn/expand-dim` | EML-EHNN |
+| 29 | GET | `/api/orchestrator/agents` | Fugu Conductor 编排 |
+| 30 | POST | `/api/orchestrator/orchestrate` | Fugu Conductor 编排 |
+| 31 | GET | `/api/orchestrator/stats` | Fugu Conductor 编排 |
 
 ---
 
-*文档生成时间：2026-06-21 | 对应代码版本：tomas-agi @ `797db94`*
+*文档生成时间：2026-06-23 | 对应代码版本：tomas-agi v3.13 @ `168 端点`*
