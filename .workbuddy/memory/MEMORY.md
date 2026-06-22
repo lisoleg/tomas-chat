@@ -81,6 +81,8 @@
 - NASGA: octonion_mul.v, delta_compute.v, spectral_engine.v (Zynq-7020)
 
 ## 遗留事项
-- v3.9-v3.12 待 git commit + push (包含v3.12 Flask 25端点 + 前端4面板)
+- v3.9-v3.12 已 git commit + push 完成 (commit 1691907 + 1e14e03)
 - ARC-AGI-3 真实数据集需 ARC_API_KEY
 - GAIA 真实数据集需 HUGGINGFACE_TOKEN
+- 前端新面板单元测试待补充
+- LOB会话持久化(当前内存存储,重启丢失)

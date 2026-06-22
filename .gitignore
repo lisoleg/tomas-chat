@@ -66,3 +66,4 @@ test_hyperindex.py
 tomas_agi/sim/compute_i_weight_v*.py
 tomas_agi/sim/eml_semzip_v*.py
 tomas_agi/sim/eml_semzip_enhanced.py
+data/
