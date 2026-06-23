@@ -40,6 +40,12 @@ const LuZhaoPanel = lazy(() => import('./components/LuZhaoPanel').then(m => ({ d
 const GATPanel = lazy(() => import('./components/GATPanel').then(m => ({ default: m.GATPanel })))
 const FinancialWorldPanel = lazy(() => import('./components/FinancialWorldPanel').then(m => ({ default: m.FinancialWorldPanel })))
 const TokenizedEconomyPanel = lazy(() => import('./components/TokenizedEconomyPanel').then(m => ({ default: m.TokenizedEconomyPanel })))
+// v3.14 新面板（具名导出）
+const SuperpositionPanel = lazy(() => import('./components/SuperpositionPanel').then(m => ({ default: m.SuperpositionPanel })))
+const MathUnificationPanel = lazy(() => import('./components/MathUnificationPanel').then(m => ({ default: m.MathUnificationPanel })))
+const AdaptiveLibraryPanel = lazy(() => import('./components/AdaptiveLibraryPanel').then(m => ({ default: m.AdaptiveLibraryPanel })))
+const CHLIsomorphismPanel = lazy(() => import('./components/CHLIsomorphismPanel').then(m => ({ default: m.CHLIsomorphismPanel })))
+const TaiyiDuelPanel = lazy(() => import('./components/TaiyiDuelPanel').then(m => ({ default: m.TaiyiDuelPanel })))
 
 // 默认自动加载的 EML 文件（设为空字符串则禁用自动加载，改由聊天时直接查 DB）
 const DEFAULT_EML_URL = ''
@@ -292,6 +298,36 @@ export default function App() {
         return (
           <ErrorBoundary>
             <TokenizedEconomyPanel />
+          </ErrorBoundary>
+        )
+      case 'superposition-geometry':
+        return (
+          <ErrorBoundary>
+            <SuperpositionPanel />
+          </ErrorBoundary>
+        )
+      case 'math-unification':
+        return (
+          <ErrorBoundary>
+            <MathUnificationPanel />
+          </ErrorBoundary>
+        )
+      case 'adaptive-library':
+        return (
+          <ErrorBoundary>
+            <AdaptiveLibraryPanel />
+          </ErrorBoundary>
+        )
+      case 'chl-isomorphism':
+        return (
+          <ErrorBoundary>
+            <CHLIsomorphismPanel />
+          </ErrorBoundary>
+        )
+      case 'taiyi-duel':
+        return (
+          <ErrorBoundary>
+            <TaiyiDuelPanel />
           </ErrorBoundary>
         )
       case 'docs':

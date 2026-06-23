@@ -1,5 +1,5 @@
 // 消息列表：自动滚动到底部
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../types'
 import { MessageBubble } from './MessageBubble'
 
@@ -9,7 +9,7 @@ interface MessageListProps {
   onFeedback?: (messageId: string, feedback: 'like' | 'dislike' | null) => void
 }
 
-function MessageList({ messages, onRetryDirect, onFeedback }: MessageListProps) {
+function MessageListInner({ messages, onRetryDirect, onFeedback }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -39,7 +39,7 @@ function MessageList({ messages, onRetryDirect, onFeedback }: MessageListProps) 
   )
 }
 
-export const MessageList = React.memo(MessageList, (prev, next) => {
+export const MessageList = React.memo(MessageListInner, (prev, next) => {
   return prev.messages === next.messages
     && prev.onRetryDirect === next.onRetryDirect
     && prev.onFeedback === next.onFeedback

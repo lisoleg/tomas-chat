@@ -1,5 +1,5 @@
 // 单条消息气泡：用户 / 助手区分；Markdown 渲染 + 代码高亮 + 复制按钮
-import { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js'
@@ -88,7 +88,7 @@ function getModeBadge(mode: string): { label: string; color: string; bg: string 
   return config[mode] || null
 }
 
-function MessageBubble({ message, onRetryDirect, onFeedback }: MessageBubbleProps) {
+function MessageBubbleInner({ message, onRetryDirect, onFeedback }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   // 用户消息右对齐气泡；助手消息左对齐
   const wrapperCls = isUser
@@ -394,7 +394,7 @@ function TypingDots() {
   )
 }
 
-export const MessageBubble = React.memo(MessageBubble, (prev, next) => {
+export const MessageBubble = React.memo(MessageBubbleInner, (prev, next) => {
   return prev.message === next.message
     && prev.onRetryDirect === next.onRetryDirect
     && prev.onFeedback === next.onFeedback

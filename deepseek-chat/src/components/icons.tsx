@@ -577,3 +577,65 @@ export function IconToken({ size, ...rest }: IconProps) {
   )
 }
 
+// ── v3.14 新增图标 ─────────────────────────────────
+
+/** 叠加态几何 — 多个圆圈叠加 */
+export function IconSuperposition({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="9" cy="9" r="5" />
+      <circle cx="15" cy="9" r="5" />
+      <circle cx="12" cy="15" r="5" />
+    </svg>
+  )
+}
+
+/** 数学大统一 — 无穷符号∞ */
+export function IconMathUnify({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+    </svg>
+  )
+}
+
+/** 自适应库 — 书本+齿轮 */
+export function IconAdaptiveLib({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      <circle cx="14" cy="10" r="2.5" />
+      <path d="M14 7.5v-1M14 13.5v-1M16.5 10h1M10.5 10h1" />
+    </svg>
+  )
+}
+
+/** CHL同构 — 三角形 */
+export function IconCHL({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <path d="M12 2L22 20H2L12 2z" />
+      <circle cx="12" cy="2" r="1.5" fill="currentColor" />
+      <circle cx="22" cy="20" r="1.5" fill="currentColor" />
+      <circle cx="2" cy="20" r="1.5" fill="currentColor" />
+      <line x1="12" y1="5" x2="6" y2="17" />
+      <line x1="12" y1="5" x2="18" y2="17" />
+      <line x1="7" y1="20" x2="17" y2="20" />
+    </svg>
+  )
+}
+
+/** 太一互搏 — 太极图/双圆 */
+export function IconTaiyi({ size, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size)} {...rest}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a4.5 4.5 0 0 1 0 9 4.5 4.5 0 0 0 0 9" fill="currentColor" opacity="0" />
+      <path d="M12 3a4.5 4.5 0 0 1 0 9 4.5 4.5 0 0 0 0 9" />
+      <circle cx="12" cy="7.5" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="16.5" r="1.2" fill="none" stroke="currentColor" />
+    </svg>
+  )
+}
+

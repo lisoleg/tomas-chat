@@ -3,7 +3,8 @@ import {
   IconBrain, IconShield, IconMemory, IconLayers,
   IconRoute, IconFlame, IconGlobe, IconAuditLog, IconCpu,
   IconLock, IconTarget, IconHeartbeat, IconSearchGavel,
-  IconDna, IconGat, IconFinancial, IconToken
+  IconDna, IconGat, IconFinancial, IconToken,
+  IconSuperposition, IconMathUnify, IconAdaptiveLib, IconCHL, IconTaiyi
 } from './icons';
 
 // ── Types ──────────────────────────────────────────────
@@ -92,6 +93,11 @@ export default function Dashboard() {
       case 'gat': return <IconGat className="w-5 h-5" />;
       case 'financial': return <IconFinancial className="w-5 h-5" />;
       case 'token': return <IconToken className="w-5 h-5" />;
+      case 'superposition': return <IconSuperposition className="w-5 h-5" />;
+      case 'math-unify': return <IconMathUnify className="w-5 h-5" />;
+      case 'adaptive-lib': return <IconAdaptiveLib className="w-5 h-5" />;
+      case 'chl': return <IconCHL className="w-5 h-5" />;
+      case 'taiyi': return <IconTaiyi className="w-5 h-5" />;
       default: return <IconCpu className="w-5 h-5" />;
     }
   };
@@ -180,6 +186,11 @@ export default function Dashboard() {
                   'gat-axioms': 'gat-axioms',
                   'financial-world': 'financial-world',
                   'tokenized-economy': 'tokenized-economy',
+                  'superposition-geometry': 'superposition-geometry',
+                  'math-unification': 'math-unification',
+                  'adaptive-library': 'adaptive-library',
+                  'chl-isomorphism': 'chl-isomorphism',
+                  'taiyi-duel': 'taiyi-duel',
                 };
                 const target = panelMap[sys.id] || sys.id;
                 window.dispatchEvent(new CustomEvent('tomas-nav', { detail: { panel: target } }));
@@ -463,6 +474,61 @@ function buildSubsystemCards(): SubsystemCard[] {
       stats: [
         { label: '智能体', value: '0' },
         { label: 'Gini', value: '—' },
+      ],
+    },
+    {
+      id: 'superposition-geometry',
+      name: '叠加态几何',
+      description: 'Thomson 问题 · E8 格堆积密度 · 相变检测 · 对抗脆弱性',
+      status: 'active',
+      icon: <IconSuperposition className="w-5 h-5" />,
+      stats: [
+        { label: 'E8密度', value: '0.254' },
+        { label: 'vuln', value: '0.27' },
+      ],
+    },
+    {
+      id: 'math-unification',
+      name: '数学大统一',
+      description: '热带几何 · 共形几何 · UV/IR 对偶 · 柏拉图收敛',
+      status: 'active',
+      icon: <IconMathUnify className="w-5 h-5" />,
+      stats: [
+        { label: '分支', value: '8' },
+        { label: '不动点', value: '0.5' },
+      ],
+    },
+    {
+      id: 'adaptive-library',
+      name: '自适应库学习',
+      description: 'α/β 在线学习 · Sleep-Step 原语发现 · Rice 定理上界突破',
+      status: 'active',
+      icon: <IconAdaptiveLib className="w-5 h-5" />,
+      stats: [
+        { label: '原语', value: '5' },
+        { label: '增益', value: '0.72' },
+      ],
+    },
+    {
+      id: 'chl-isomorphism',
+      name: 'CHL 同构',
+      description: 'Curry-Howard-Lambek 三角同构 · κ-Snap 证明搜索 · 公理扩展',
+      status: 'active',
+      icon: <IconCHL className="w-5 h-5" />,
+      stats: [
+        { label: '定理', value: '3' },
+        { label: '公理', value: '3' },
+      ],
+    },
+    {
+      id: 'taiyi-duel',
+      name: '太一互搏 Agent',
+      description: 'Physical AI · L3 差分感知 · L2 DFS 回溯 · L4 贝叶斯熔断',
+      status: 'active',
+      icon: <IconTaiyi className="w-5 h-5" />,
+      stats: [
+        { label: 'RHAE', value: '72' },
+        { label: 'L4', value: 'EXECUTE' },
       ],
     },
   ];

@@ -7,7 +7,8 @@ import {
   IconDashboard, IconGlobe, IconAuditLog, IconBrain, IconMemory,
   IconShield, IconLayers, IconFlame, IconRoute, IconCpu, IconGraph,
   IconLock, IconDescription, IconTarget, IconAnchor,
-  IconHeartbeat, IconSearchGavel, IconDna, IconGat, IconFinancial, IconToken
+  IconHeartbeat, IconSearchGavel, IconDna, IconGat, IconFinancial, IconToken,
+  IconSuperposition, IconMathUnify, IconAdaptiveLib, IconCHL, IconTaiyi
 } from './icons'
 import { SkeletonText } from './Skeleton'
 
@@ -61,6 +62,11 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'gat-axioms', label: 'GAT 公理', icon: <IconGat size={17} />, section: 'engine' },
   { id: 'financial-world', label: '金融市场', icon: <IconFinancial size={17} />, section: 'engine' },
   { id: 'tokenized-economy', label: '代币经济', icon: <IconToken size={17} />, section: 'engine' },
+  { id: 'superposition-geometry', label: '叠加态几何', icon: <IconSuperposition size={17} />, section: 'engine' },
+  { id: 'math-unification', label: '数学大统一', icon: <IconMathUnify size={17} />, section: 'engine' },
+  { id: 'adaptive-library', label: '自适应库', icon: <IconAdaptiveLib size={17} />, section: 'engine' },
+  { id: 'chl-isomorphism', label: 'CHL同构', icon: <IconCHL size={17} />, section: 'engine' },
+  { id: 'taiyi-duel', label: '太一互搏', icon: <IconTaiyi size={17} />, section: 'engine' },
   { id: 'docs', label: '技术文档', icon: <IconFile size={17} />, section: 'info' },
 ]
 
